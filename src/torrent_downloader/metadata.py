@@ -2,6 +2,7 @@ from typing import Any, Dict, List
 
 import requests
 
+from torrent_downloader.core.cache import app_cache
 from torrent_downloader.core.config import config
 
 TMDB_SEARCH_URL: str = "https://api.themoviedb.org/3/search/multi"
@@ -9,8 +10,9 @@ HTTP_STATUS_OK: int = 200
 VALID_MEDIA_TYPES: set[str] = {"movie", "tv"}
 
 
+@app_cache.memoize(expire=config.cache_expiration_seconds)
 def search_tmdb_multi(query: str) -> List[Dict[str, Any]]:
-    """Queries TMDB for movies and television shows matching the input string."""
+    """Queries TMDB for matching media and caches the response."""
     if not config.tmdb_api_key:
         return []
 
@@ -43,3 +45,8 @@ def extract_year(tmdb_item: Dict[str, Any]) -> str:
 def extract_title(tmdb_item: Dict[str, Any]) -> str:
     """Extracts the primary title from a TMDB payload."""
     return tmdb_item.get("title", "") or tmdb_item.get("name", "")
+
+
+def extract_media_type(tmdb_item: Dict[str, Any]) -> str:
+    """Extracts the media type from a TMDB payload."""
+    return tmdb_item.get("media_type", "") or tmdb_item.get("name", "")

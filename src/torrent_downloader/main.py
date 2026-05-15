@@ -1,133 +1,159 @@
-import sys
+import warnings
 from pathlib import Path
 from typing import Any, Dict, List
 
 import qbittorrentapi
+import uvicorn
+from fastapi import FastAPI, HTTPException
+from pydantic import BaseModel
 from qbittorrentapi.exceptions import Conflict409Error
 
 from torrent_downloader.core.config import config
 from torrent_downloader.core.logger import app_logger
-from torrent_downloader.metadata import extract_title, extract_year, search_tmdb_multi
+from torrent_downloader.core.settings_manager import update_environment_variables
+from torrent_downloader.metadata import (
+    extract_media_type,
+    extract_title,
+    extract_year,
+    search_tmdb_multi,
+)
 from torrent_downloader.search import (
     filter_and_sort_results,
     group_by_resolution,
     search_torrents,
 )
-from torrent_downloader.services.qbittorrent import get_torrent_client
+from torrent_downloader.services.qbittorrent import (
+    get_active_transfers,
+    get_torrent_client,
+)
 from torrent_downloader.utils.vpn_checker import is_vpn_connected
 
-MAX_RESULTS_DISPLAY: int = 5
-EXIT_FAILURE: int = 1
+warnings.filterwarnings("ignore", category=SyntaxWarning)
+
+app: FastAPI = FastAPI(title="Torrent Downloader API")
 
 
-def select_from_list(prompt: str, max_index: int) -> int:
-    """Retrieves a valid integer index from standard input."""
-    while True:
-        selection: str = input(prompt)
-        if selection.isdigit():
-            index: int = int(selection)
-            if 0 <= index <= max_index:
-                return index
-        print("Invalid selection. Try again.")
+class DownloadRequest(BaseModel):
+    magnet_uri: str
+    media_type: str = "unsorted"
 
 
-def main() -> None:
+class ConfigUpdateRequest(BaseModel):
+    search_timeout_seconds: int | None = None
+    minimum_seeders: int | None = None
+    base_media_dir: str | None = None
+
+
+@app.get("/api/v1/search/tmdb")
+def api_search_tmdb(query: str) -> List[Dict[str, Any]]:
+    """Returns formatted TMDB metadata for dispatcher selection."""
+    raw_results: List[Dict[str, Any]] = search_tmdb_multi(query)
+    formatted_results: List[Dict[str, Any]] = []
+
+    for item in raw_results:
+        formatted_results.append(
+            {
+                "title": extract_title(item),
+                "year": extract_year(item),
+                "media_type": extract_media_type(item),
+                "original_data": item,
+            }
+        )
+    return formatted_results
+
+
+@app.get("/api/v1/search/torrents")
+def api_search_torrents(query: str) -> Dict[str, List[Dict[str, Any]]]:
+    """Returns torrents grouped by resolution."""
+    client: qbittorrentapi.Client | None = get_torrent_client()
+    if not client:
+        raise HTTPException(status_code=503, detail="qBittorrent client unavailable.")
+
+    raw_results: List[Dict[str, Any]] = search_torrents(client, query)
+    processed_results: List[Dict[str, Any]] = filter_and_sort_results(raw_results)
+
+    return group_by_resolution(processed_results)
+
+
+@app.post("/api/v1/download")
+def api_trigger_download(payload: DownloadRequest) -> Dict[str, str]:
+    """Submits a selected magnet URI to the qBittorrent daemon."""
     if not is_vpn_connected():
-        app_logger.critical("VPN is not connected. Aborting execution.")
-        sys.exit(EXIT_FAILURE)
+        raise HTTPException(status_code=403, detail="VPN is not connected.")
 
     client: qbittorrentapi.Client | None = get_torrent_client()
     if not client:
-        app_logger.critical(
-            "Could not establish connection to torrent client. Aborting execution."
-        )
-        sys.exit(EXIT_FAILURE)
+        raise HTTPException(status_code=503, detail="qBittorrent client unavailable.")
+
+    base_path: Path = Path(config.base_media_dir).resolve()
+    save_directory: Path = base_path / payload.media_type
+    save_directory.mkdir(parents=True, exist_ok=True)
+
+    if config.dry_run:
+        return {"status": "success", "message": "Dry run bypassed download."}
 
     try:
-        search_query: str = input("Enter movie or show title: ")
+        client.torrents_add(urls=payload.magnet_uri, save_path=str(save_directory))
+        return {"status": "success", "message": "Torrent added to queue."}
+    except Conflict409Error:
+        return {
+            "status": "conflict",
+            "message": "Torrent already exists in transfer list.",
+        }
 
-        tmdb_results: List[Dict[str, Any]] = search_tmdb_multi(search_query)
-        if not tmdb_results:
-            app_logger.warning("No matches found on TMDB.")
-            return
 
-        print("\nTMDB Results:")
-        for idx, item in enumerate(tmdb_results[:MAX_RESULTS_DISPLAY]):
-            title: str = extract_title(item)
-            year: str = extract_year(item)
-            media_type: str = item.get("media_type", "unknown").upper()
-            print(f"[{idx}] {title} ({year}) - {media_type}")
+@app.get("/api/v1/transfers")
+def api_get_transfers() -> List[Dict[str, Any]]:
+    """Returns the current state of all qBittorrent transfers."""
+    client: qbittorrentapi.Client | None = get_torrent_client()
+    if not client:
+        raise HTTPException(status_code=503, detail="qBittorrent client unavailable.")
 
-        target_tmdb_index: int = select_from_list(
-            "\nSelect the correct media (number): ",
-            min(len(tmdb_results), MAX_RESULTS_DISPLAY) - 1,
-        )
+    return get_active_transfers(client)
 
-        selected_media: Dict[str, Any] = tmdb_results[target_tmdb_index]
-        refined_query: str = (
-            f"{extract_title(selected_media)} {extract_year(selected_media)}"
-        )
 
-        raw_results: List[Dict[str, Any]] = search_torrents(client, refined_query)
-        processed_results: List[Dict[str, Any]] = filter_and_sort_results(raw_results)
+@app.get("/api/v1/settings")
+def api_get_settings() -> Dict[str, Any]:
+    """Returns the current active configuration state."""
+    return {
+        "search_timeout_seconds": config.search_timeout_seconds,
+        "minimum_seeders": config.minimum_seeders,
+        "base_media_dir": config.base_media_dir,
+    }
 
-        resolution_groups: Dict[str, List[Dict[str, Any]]] = group_by_resolution(
-            processed_results
-        )
 
-        if not resolution_groups:
-            app_logger.warning(
-                "No torrents found meeting criteria with standard resolutions."
-            )
-            return
+@app.patch("/api/v1/settings")
+def api_update_settings(payload: ConfigUpdateRequest) -> Dict[str, str]:
+    """Applies configuration updates to the environment file."""
+    update_data: Dict[str, Any] = payload.model_dump(exclude_unset=True)
 
-        print("\nAvailable Resolutions:")
-        available_resolutions: List[str] = list(resolution_groups.keys())
-        for idx, res_key in enumerate(available_resolutions):
-            print(f"[{idx}] {res_key} ({len(resolution_groups[res_key])} results)")
+    if update_data:
+        update_environment_variables(update_data)
+        return {
+            "status": "success",
+            "message": "Settings updated. Application restart required to apply changes.",
+        }
 
-        target_res_index: int = select_from_list(
-            "\nSelect desired resolution (number): ", len(available_resolutions) - 1
-        )
+    return {"status": "unchanged", "message": "No valid configuration keys provided."}
 
-        selected_resolution: str = available_resolutions[target_res_index]
-        final_results: List[Dict[str, Any]] = resolution_groups[selected_resolution]
 
-        print(f"\nTop Torrents for {selected_resolution}:")
-        for idx, result in enumerate(final_results[:MAX_RESULTS_DISPLAY]):
-            print(
-                f"[{idx}] {result.get('fileName')} | Seeds: {result.get('nbSeeders')}"
-            )
+def main() -> None:
+    """Starts the uvicorn ASGI server for production."""
+    app_logger.info("Starting Torrent Downloader API Server...")
+    uvicorn.run(
+        "torrent_downloader.main:app", host=config.api_host, port=config.api_port
+    )
 
-        target_torrent_index: int = select_from_list(
-            "\nSelect a torrent to download (number): ",
-            min(len(final_results), MAX_RESULTS_DISPLAY) - 1,
-        )
 
-        target_torrent: Dict[str, Any] = final_results[target_torrent_index]
-        magnet_uri: str = target_torrent.get("fileUrl", "")
-
-        # Convert to an absolute, platform-aware path
-        base_path: Path = Path(config.base_media_dir).resolve()
-        save_directory: Path = base_path / "unsorted"
-
-        if config.dry_run:
-            app_logger.info("[DRY RUN MODE ACTIVE]")
-            app_logger.info(f"Target Directory: {save_directory}")
-            app_logger.info(f"Target Magnet URI: {magnet_uri}")
-            app_logger.info("Download bypassed.")
-        else:
-            try:
-                client.torrents_add(urls=magnet_uri, save_path=str(save_directory))
-                app_logger.info(f"Torrent added to queue. Target: {save_directory}")
-            except Conflict409Error:
-                app_logger.warning(
-                    "Torrent already exists in the qBittorrent transfer list."
-                )
-
-    except KeyboardInterrupt:
-        app_logger.info("Process interrupted by user. Exiting.")
-        sys.exit(0)
+def dev() -> None:
+    """Starts the uvicorn ASGI server with hot-reloading enabled."""
+    app_logger.info("Starting Torrent Downloader API Server in DEV MODE...")
+    uvicorn.run(
+        "torrent_downloader.main:app",
+        host=config.api_host,
+        port=config.api_port,
+        reload=True,
+    )
 
 
 if __name__ == "__main__":
