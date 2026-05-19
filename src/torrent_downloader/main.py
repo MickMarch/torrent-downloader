@@ -1,16 +1,16 @@
-import warnings
+import time
 from pathlib import Path
 from typing import Any, Dict, List
 
 import qbittorrentapi
 import uvicorn
 from fastapi import FastAPI, HTTPException
+from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 from qbittorrentapi.exceptions import Conflict409Error
 
 from torrent_downloader.core.config import config
 from torrent_downloader.core.logger import app_logger
-from torrent_downloader.core.settings_manager import update_environment_variables
 from torrent_downloader.metadata import (
     extract_media_type,
     extract_title,
@@ -25,23 +25,45 @@ from torrent_downloader.search import (
 from torrent_downloader.services.qbittorrent import (
     get_active_transfers,
     get_torrent_client,
+    stop_seeding_transfers,
 )
-from torrent_downloader.utils.vpn_checker import is_vpn_connected
+from torrent_downloader.utils.vpn_checker import is_vpn_bound
 
-warnings.filterwarnings("ignore", category=SyntaxWarning)
+API_START_TIME: float = time.time()
 
 app: FastAPI = FastAPI(title="Torrent Downloader API")
+
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
 
 
 class DownloadRequest(BaseModel):
     magnet_uri: str
     media_type: str = "unsorted"
+    dry_run: bool = False
 
 
-class ConfigUpdateRequest(BaseModel):
-    search_timeout_seconds: int | None = None
-    minimum_seeders: int | None = None
-    base_media_dir: str | None = None
+@app.get("/api/v1/health")
+def api_health_check() -> Dict[str, Any]:
+    """Returns the current operational status and uptime of the API."""
+    uptime_seconds: float = time.time() - API_START_TIME
+
+    # We pass the VPN status check directly into the health payload
+    vpn_status: bool = False
+    client: qbittorrentapi.Client | None = get_torrent_client()
+    if client:
+        vpn_status = is_vpn_bound(client)
+
+    return {
+        "status": "online",
+        "uptime_seconds": round(uptime_seconds, 2),
+        "vpn_interface_bound": vpn_status,
+    }
 
 
 @app.get("/api/v1/search/tmdb")
@@ -78,23 +100,33 @@ def api_search_torrents(query: str) -> Dict[str, List[Dict[str, Any]]]:
 @app.post("/api/v1/download")
 def api_trigger_download(payload: DownloadRequest) -> Dict[str, str]:
     """Submits a selected magnet URI to the qBittorrent daemon."""
-    if not is_vpn_connected():
-        raise HTTPException(status_code=403, detail="VPN is not connected.")
-
     client: qbittorrentapi.Client | None = get_torrent_client()
     if not client:
         raise HTTPException(status_code=503, detail="qBittorrent client unavailable.")
 
-    base_path: Path = Path(config.base_media_dir).resolve()
-    save_directory: Path = base_path / payload.media_type
+    if not is_vpn_bound(client):
+        raise HTTPException(
+            status_code=403,
+            detail="qBittorrent is not bound to the required VPN interface.",
+        )
+
+    # Construct the string explicitly to avoid Linux/Windows pathlib conflicts in Docker
+    base_dir: Path = Path(config.base_media_dir)
+    save_directory: Path = base_dir / payload.media_type
     save_directory.mkdir(parents=True, exist_ok=True)
 
-    if config.dry_run:
-        return {"status": "success", "message": "Dry run bypassed download."}
+    if payload.dry_run:
+        return {
+            "status": "success",
+            "message": f"Dry run bypassed download. Target: {save_directory}",
+        }
 
     try:
-        client.torrents_add(urls=payload.magnet_uri, save_path=str(save_directory))
-        return {"status": "success", "message": "Torrent added to queue."}
+        client.torrents_add(urls=payload.magnet_uri, save_path=save_directory)
+        return {
+            "status": "success",
+            "message": f"Torrent added to queue. Save path: {save_directory}",
+        }
     except Conflict409Error:
         return {
             "status": "conflict",
@@ -112,29 +144,23 @@ def api_get_transfers() -> List[Dict[str, Any]]:
     return get_active_transfers(client)
 
 
-@app.get("/api/v1/settings")
-def api_get_settings() -> Dict[str, Any]:
-    """Returns the current active configuration state."""
-    return {
-        "search_timeout_seconds": config.search_timeout_seconds,
-        "minimum_seeders": config.minimum_seeders,
-        "base_media_dir": config.base_media_dir,
-    }
+@app.post(
+    "/api/v1/transfers/stop-seeding",
+    response_model=Dict[str, str],
+    status_code=200,
+    summary="Changes the state of all seeding qBittorrent transfers to stopped",
+    tags=["Transfer Management"],
+)
+def api_stop_seeding_transfers() -> Dict[str, str]:
+    client: qbittorrentapi.Client | None = get_torrent_client()
+    if not client:
+        raise HTTPException(status_code=503, detail="qBittorrent client unavailable.")
 
-
-@app.patch("/api/v1/settings")
-def api_update_settings(payload: ConfigUpdateRequest) -> Dict[str, str]:
-    """Applies configuration updates to the environment file."""
-    update_data: Dict[str, Any] = payload.model_dump(exclude_unset=True)
-
-    if update_data:
-        update_environment_variables(update_data)
-        return {
-            "status": "success",
-            "message": "Settings updated. Application restart required to apply changes.",
-        }
-
-    return {"status": "unchanged", "message": "No valid configuration keys provided."}
+    try:
+        stop_seeding_transfers(client)
+        return {"status": "success", "message": "All seeding transfers stopped."}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
 
 
 def main() -> None:

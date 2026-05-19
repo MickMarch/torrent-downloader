@@ -1,40 +1,19 @@
-import subprocess
-import time
 from typing import Any, Dict, List, Optional
 
-import psutil
 import qbittorrentapi
 from qbittorrentapi.exceptions import APIConnectionError
 
 from torrent_downloader.core.config import config
 from torrent_downloader.core.logger import app_logger
 
-PROCESS_SPIN_UP_DELAY_SECONDS: float = 5.0
 STATUS_FILTER_ALL: str = "all"
+STATUS_FILTER_SEEDING: str = "seeding"
 DEFAULT_SPEED_BPS: int = 0
 DEFAULT_PROGRESS: float = 0.0
 
 
-def is_qbittorrent_running() -> bool:
-    """Evaluates active system processes for the target executable."""
-    for process in psutil.process_iter(["name"]):
-        if process.info["name"] == config.qb_process_name:
-            return True
-    return False
-
-
-def ensure_qbittorrent_active() -> None:
-    """Verifies process status and initiates the executable if required."""
-    if not is_qbittorrent_running():
-        app_logger.info("qBittorrent process not found. Initiating executable.")
-        subprocess.Popen([config.qb_executable_path], shell=True)
-        time.sleep(PROCESS_SPIN_UP_DELAY_SECONDS)
-
-
 def get_torrent_client() -> Optional[qbittorrentapi.Client]:
     """Instantiates and verifies the qBittorrent client connection."""
-    ensure_qbittorrent_active()
-
     client: qbittorrentapi.Client = qbittorrentapi.Client(
         host=f"{config.qb_host}:{config.qb_port}",
         EXTRA_HEADERS={"Authorization": f"Bearer {config.qb_api_key}"},
@@ -56,6 +35,7 @@ def get_active_transfers(client: qbittorrentapi.Client) -> List[Dict[str, Any]]:
     for torrent in torrents:
         transfer_state: Dict[str, Any] = {
             "name": torrent.get("name", ""),
+            "hash": torrent.get("hash", ""),
             "state": torrent.get("state", ""),
             "progress": torrent.get("progress", DEFAULT_PROGRESS),
             "download_speed_bps": torrent.get("dlspeed", DEFAULT_SPEED_BPS),
@@ -64,3 +44,12 @@ def get_active_transfers(client: qbittorrentapi.Client) -> List[Dict[str, Any]]:
         parsed_transfers.append(transfer_state)
 
     return parsed_transfers
+
+
+def stop_seeding_transfers(client: qbittorrentapi.Client) -> None:
+    """Stops torrent transfers from seeding in the client."""
+    torrents: Any = client.torrents_info(status_filter=STATUS_FILTER_SEEDING)
+
+    for torrent in torrents:
+        client.torrents_pause(torrent.get("hash", ""))
+        app_logger.info(f"Succesfully stopped torrent:{torrent.get('name', '')}")

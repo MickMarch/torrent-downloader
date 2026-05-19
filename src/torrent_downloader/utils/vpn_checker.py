@@ -1,41 +1,29 @@
-from typing import Any, Dict, List, Set
+from typing import Any, Dict
 
-import psutil
+import qbittorrentapi
 
-VPN_INTERFACE_PREFIXES: Set[str] = {
-    "tun",
-    "tap",
-    "utun",
-    "wg",
-    "tailscale",
-    "ipsec",
-    "nordlynx",
-}
-MINIMUM_VPN_COUNT: int = 1
+from torrent_downloader.core.logger import app_logger
 
 
-def get_active_vpn_interfaces() -> List[str]:
-    """Retrieves active network interfaces that match common VPN prefixes."""
-    active_vpns: List[str] = []
-    interfaces: Dict[str, Any] = psutil.net_if_addrs()
-    stats: Dict[str, Any] = psutil.net_if_stats()
+def is_vpn_bound(
+    client: qbittorrentapi.Client, expected_interface: str = "NordLynx"
+) -> bool:
+    """
+    Verifies that qBittorrent is strictly bound to the VPN network interface.
+    This guarantees traffic halts if the VPN drops, bypassing the need for host OS process checks.
+    """
+    try:
+        preferences: Dict[str, Any] = client.app_preferences()
+        current_interface: str = str(preferences.get("current_interface_name", ""))
 
-    for interface_name in interfaces.keys():
-        interface_stats: Any = stats.get(interface_name)
+        if current_interface.lower() == expected_interface.lower():
+            return True
 
-        if interface_stats and interface_stats.isup:
-            lower_name: str = interface_name.lower()
-            if any(lower_name.startswith(prefix) for prefix in VPN_INTERFACE_PREFIXES):
-                active_vpns.append(interface_name)
-
-    return active_vpns
-
-
-def is_vpn_connected() -> bool:
-    """Evaluates if at least one VPN interface is active."""
-    return len(get_active_vpn_interfaces()) >= MINIMUM_VPN_COUNT
-
-
-if __name__ == "__main__":
-    is_active: bool = is_vpn_connected()
-    print(f"VPN Connected: {is_active}")
+        app_logger.critical(
+            f"SECURITY ALERT: qBittorrent is bound to '{current_interface}', "
+            f"but requires '{expected_interface}'. Download rejected."
+        )
+        return False
+    except Exception as e:
+        app_logger.error(f"Failed to verify network interface binding: {e}")
+        return False
