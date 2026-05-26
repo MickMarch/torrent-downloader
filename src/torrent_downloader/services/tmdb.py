@@ -1,3 +1,5 @@
+"""TMDB API client functions for multi-search queries and result normalisation."""
+
 from typing import Any, Dict, List
 
 import requests

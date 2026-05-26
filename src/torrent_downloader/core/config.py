@@ -1,3 +1,5 @@
+"""Application configuration loaded from environment variables and an optional .env file."""
+
 from pydantic import Field
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
@@ -11,7 +13,6 @@ class AppConfig(BaseSettings):
     qb_port: int = Field(default=8080)
     qb_api_key: str = Field(...)
 
-    base_media_dir: str = Field(default="/downloads/media")
     target_language: str = Field(default="en")
     minimum_seeders: int = Field(default=10)
     tmdb_api_key: str = Field(...)
