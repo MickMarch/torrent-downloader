@@ -51,9 +51,4 @@ def extract_title(tmdb_item: Dict[str, Any]) -> str:
 
 def extract_media_type(tmdb_item: Dict[str, Any]) -> str:
     """Extracts the media type from a TMDB payload."""
-    media_type: str = tmdb_item.get("media_type", "") or tmdb_item.get("name", "")
-
-    if media_type.lower() == "tv":
-        return "Shows"
-    elif media_type.lower() == "movie":
-        return "Movies"
+    return tmdb_item.get("media_type", "") or tmdb_item.get("name", "")
