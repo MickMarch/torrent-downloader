@@ -7,7 +7,10 @@ import requests
 from torrent_downloader.core.cache import app_cache
 from torrent_downloader.core.config import config
 
-TMDB_SEARCH_URL: str = "https://api.themoviedb.org/3/search/multi"
+TMDB_BASE_URL: str = "https://api.themoviedb.org/3"
+TMDB_SEARCH_URL: str = f"{TMDB_BASE_URL}/search/multi"
+TMDB_MOVIE_URL: str = f"{TMDB_BASE_URL}/movie"
+TMDB_TV_URL: str = f"{TMDB_BASE_URL}/tv"
 HTTP_STATUS_OK: int = 200
 VALID_MEDIA_TYPES: set[str] = {"movie", "tv"}
 
@@ -52,3 +55,41 @@ def extract_title(tmdb_item: Dict[str, Any]) -> str:
 def extract_media_type(tmdb_item: Dict[str, Any]) -> str:
     """Extracts the media type from a TMDB payload."""
     return tmdb_item.get("media_type", "") or tmdb_item.get("name", "")
+
+
+@app_cache.memoize(expire=config.cache_expiration_seconds)
+def get_movie_details(movie_id: int) -> Dict[str, Any]:
+    """Fetches full movie details from TMDB by movie ID."""
+    if not config.tmdb_api_key:
+        return {}
+
+    params: Dict[str, str] = {
+        "api_key": config.tmdb_api_key,
+        "language": config.target_language,
+    }
+
+    response: requests.Response = requests.get(f"{TMDB_MOVIE_URL}/{movie_id}", params=params)
+
+    if response.status_code == HTTP_STATUS_OK:
+        return response.json()
+
+    return {}
+
+
+@app_cache.memoize(expire=config.cache_expiration_seconds)
+def get_tv_details(series_id: int) -> Dict[str, Any]:
+    """Fetches full TV series details from TMDB by series ID."""
+    if not config.tmdb_api_key:
+        return {}
+
+    params: Dict[str, str] = {
+        "api_key": config.tmdb_api_key,
+        "language": config.target_language,
+    }
+
+    response: requests.Response = requests.get(f"{TMDB_TV_URL}/{series_id}", params=params)
+
+    if response.status_code == HTTP_STATUS_OK:
+        return response.json()
+
+    return {}
