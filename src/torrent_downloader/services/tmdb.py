@@ -54,7 +54,7 @@ def extract_title(tmdb_item: Dict[str, Any]) -> str:
 
 def extract_media_type(tmdb_item: Dict[str, Any]) -> str:
     """Extracts the media type from a TMDB payload."""
-    return tmdb_item.get("media_type", "") or tmdb_item.get("name", "")
+    return tmdb_item.get("media_type", "")
 
 
 @app_cache.memoize(expire=config.cache_expiration_seconds)

@@ -56,17 +56,17 @@ class TestExtractYear:
 # ---------------------------------------------------------------------------
 
 class TestExtractMediaType:
-    def test_returns_media_type_for_movie(self) -> None:
+    def test_returns_movie(self) -> None:
         assert extract_media_type({"media_type": "movie"}) == "movie"
 
-    def test_returns_media_type_for_tv(self) -> None:
+    def test_returns_tv(self) -> None:
         assert extract_media_type({"media_type": "tv"}) == "tv"
 
-    def test_falls_back_to_name_when_media_type_missing(self) -> None:
-        assert extract_media_type({"name": "Breaking Bad"}) == "Breaking Bad"
-
-    def test_falls_back_to_name_when_media_type_empty(self) -> None:
-        assert extract_media_type({"media_type": "", "name": "Breaking Bad"}) == "Breaking Bad"
-
-    def test_returns_empty_string_when_both_missing(self) -> None:
+    def test_returns_empty_string_when_missing(self) -> None:
         assert extract_media_type({}) == ""
+
+    def test_does_not_fall_back_to_name(self) -> None:
+        assert extract_media_type({"name": "Breaking Bad"}) == ""
+
+    def test_returns_empty_string_when_media_type_empty(self) -> None:
+        assert extract_media_type({"media_type": ""}) == ""
