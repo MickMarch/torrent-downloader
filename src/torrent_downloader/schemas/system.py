@@ -1,4 +1,4 @@
-"""Response schema for the /health endpoint."""
+"""Response schemas for system endpoints."""
 
 from pydantic import BaseModel
 
@@ -9,3 +9,10 @@ class HealthResponse(BaseModel):
     status: str
     uptime_seconds: float
     vpn_interface_bound: bool
+
+
+class CacheClearResponse(BaseModel):
+    """Schema for the cache clear response."""
+
+    cleared: bool
+    message: str
