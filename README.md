@@ -1,6 +1,6 @@
 # Torrent Downloader
 
-A FastAPI microservice that wraps qBittorrent and TMDB. Exposes a REST API for searching media metadata, finding torrents, and submitting downloads — intended to be called by an external orchestrator that handles save path logic.
+A FastAPI microservice that wraps qBittorrent and TMDB. Exposes a REST API for searching media metadata, finding torrents, submitting downloads, and reporting disk usage — intended to be called by an external orchestrator (e.g. a Discord bot or media library service) that handles save path logic and workflow coordination.
 
 ---
 
@@ -86,13 +86,25 @@ API available at `http://127.0.0.1:8000`. Interactive docs at `http://127.0.0.1:
 | Method | Endpoint | Description |
 |--------|----------|-------------|
 | `GET` | `/api/v1/health` | Liveness check + VPN binding status |
-| `GET` | `/api/v1/search/tmdb?query=` | TMDB metadata search |
+| `GET` | `/api/v1/storage?path=` | Disk usage (GB + %) for a given save path |
+| `DELETE` | `/api/v1/cache` | Evict all cached data |
+| `GET` | `/api/v1/search/tmdb?query=` | TMDB multi-search (movies + TV) |
+| `GET` | `/api/v1/search/tmdb/movie/{movie_id}` | Full TMDB movie details by ID |
+| `GET` | `/api/v1/search/tmdb/tv/{series_id}` | Full TMDB TV series details by ID |
 | `GET` | `/api/v1/search/torrents?query=` | Torrent search grouped by resolution |
 | `POST` | `/api/v1/download` | Submit magnet URI to qBittorrent |
 | `GET` | `/api/v1/transfers` | List all active transfers |
 | `POST` | `/api/v1/transfers/stop-seeding` | Pause all seeding torrents |
 
 The `/api/v1/download` endpoint requires the caller to provide the full `save_path`. Save path construction is the responsibility of the orchestrating application.
+
+### Inter-service communication
+
+This service is stateless and cache-only — it holds no persistent records. Orchestrators should:
+
+- Call `/api/v1/storage` before dispatching a download to verify sufficient disk space
+- Poll `/api/v1/transfers` to detect when a download completes, then notify downstream services (e.g. a media library cataloguer)
+- Treat all responses as ephemeral; do not use this service as a source of truth for library state
 
 ---
 
@@ -110,7 +122,6 @@ uv run pytest tests/test_search.py::test_filter_and_sort_results
 
 ## Roadmap
 
-- [ ] Fix test suite — imports reference old module paths pre-refactor
-- [ ] Containerization — Dockerfile and docker-compose for isolated deployment
-- [ ] API authentication — protect endpoints with an API key or JWT
-- [ ] TV show support — season/episode-aware search and structured save path hints
+- [ ] Dockerfile — containerize service for isolated deployment; docker-compose lives in the infra repo
+- [ ] API authentication — protect endpoints with an API key or JWT for orchestrator-only access
+- [ ] Webhook/event emission — notify downstream services when a transfer completes
