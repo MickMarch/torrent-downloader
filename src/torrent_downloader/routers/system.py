@@ -3,14 +3,15 @@
 import time
 
 import qbittorrentapi
-from fastapi import APIRouter
+from fastapi import APIRouter, HTTPException
 from fastapi import status as fastapi_status
 
 from torrent_downloader.core.cache import app_cache
 from torrent_downloader.core.constants import API_START_TIME, TAG_SYSTEM
 from torrent_downloader.core.logger import app_logger
-from torrent_downloader.schemas.system import CacheClearResponse, HealthResponse
+from torrent_downloader.schemas.system import CacheClearResponse, DiskUsageResponse, HealthResponse
 from torrent_downloader.services.qbittorrent import get_torrent_client, is_vpn_bound
+from torrent_downloader.services.storage import get_disk_usage
 
 router = APIRouter(tags=[TAG_SYSTEM])
 
@@ -35,6 +36,24 @@ def api_health_check() -> HealthResponse:
         uptime_seconds=round(uptime_seconds, 2),
         vpn_interface_bound=vpn_status,
     )
+
+
+@router.get(
+    "/storage",
+    response_model=DiskUsageResponse,
+    status_code=fastapi_status.HTTP_200_OK,
+    summary="Returns disk usage for the given save path.",
+)
+def get_storage_info(path: str) -> DiskUsageResponse:
+    """Return total, used, and free disk space for the specified save path."""
+    try:
+        usage = get_disk_usage(path)
+    except (FileNotFoundError, PermissionError, OSError) as error:
+        raise HTTPException(
+            status_code=fastapi_status.HTTP_400_BAD_REQUEST,
+            detail=str(error),
+        )
+    return DiskUsageResponse(path=path, **usage)
 
 
 @router.delete(

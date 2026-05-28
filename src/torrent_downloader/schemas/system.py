@@ -16,3 +16,13 @@ class CacheClearResponse(BaseModel):
 
     cleared: bool
     message: str
+
+
+class DiskUsageResponse(BaseModel):
+    """Schema for disk usage response for a given save path."""
+
+    path: str
+    total_gb: float
+    used_gb: float
+    free_gb: float
+    used_percent: float
