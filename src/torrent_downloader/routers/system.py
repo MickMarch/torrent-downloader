@@ -3,11 +3,12 @@
 import time
 
 import qbittorrentapi
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter
 from fastapi import status as fastapi_status
 
 from torrent_downloader.core.cache import app_cache
 from torrent_downloader.core.constants import API_START_TIME, TAG_SYSTEM
+from torrent_downloader.core.errors import AppException, ErrorCode
 from torrent_downloader.core.logger import app_logger
 from torrent_downloader.schemas.system import CacheClearResponse, DiskUsageResponse, HealthResponse
 from torrent_downloader.services.qbittorrent import get_torrent_client, is_vpn_bound
@@ -48,10 +49,23 @@ def get_storage_info(path: str) -> DiskUsageResponse:
     """Return total, used, and free disk space for the specified save path."""
     try:
         usage = get_disk_usage(path)
-    except (FileNotFoundError, PermissionError, OSError) as error:
-        raise HTTPException(
-            status_code=fastapi_status.HTTP_400_BAD_REQUEST,
-            detail=str(error),
+    except FileNotFoundError:
+        raise AppException(
+            status_code=fastapi_status.HTTP_404_NOT_FOUND,
+            code=ErrorCode.PATH_NOT_FOUND,
+            detail=f"Path not found: {path}",
+        )
+    except PermissionError:
+        raise AppException(
+            status_code=fastapi_status.HTTP_403_FORBIDDEN,
+            code=ErrorCode.PERMISSION_DENIED,
+            detail=f"Permission denied: {path}",
+        )
+    except OSError:
+        raise AppException(
+            status_code=fastapi_status.HTTP_500_INTERNAL_SERVER_ERROR,
+            code=ErrorCode.INTERNAL_ERROR,
+            detail="Disk usage check failed.",
         )
     return DiskUsageResponse(path=path, **usage)
 

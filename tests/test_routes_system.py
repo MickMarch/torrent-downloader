@@ -85,19 +85,19 @@ class TestStorageRoute:
         body = client.get("/api/v1/storage?path=/some/path").json()
         assert body["path"] == "/some/path"
 
-    def test_returns_400_on_invalid_path(self, client: TestClient, mocker: MockerFixture) -> None:
+    def test_returns_404_on_invalid_path(self, client: TestClient, mocker: MockerFixture) -> None:
         mocker.patch(
             "torrent_downloader.routers.system.get_disk_usage",
             side_effect=FileNotFoundError("No such file or directory"),
         )
-        assert client.get("/api/v1/storage?path=/invalid/path").status_code == 400
+        assert client.get("/api/v1/storage?path=/invalid/path").status_code == 404
 
-    def test_returns_400_on_permission_error(self, client: TestClient, mocker: MockerFixture) -> None:
+    def test_returns_403_on_permission_error(self, client: TestClient, mocker: MockerFixture) -> None:
         mocker.patch(
             "torrent_downloader.routers.system.get_disk_usage",
             side_effect=PermissionError("Permission denied"),
         )
-        assert client.get("/api/v1/storage?path=/restricted/path").status_code == 400
+        assert client.get("/api/v1/storage?path=/restricted/path").status_code == 403
 
     def test_missing_path_param_returns_422(self, client: TestClient) -> None:
         assert client.get("/api/v1/storage").status_code == 422

@@ -1,11 +1,12 @@
 """Transfers router: download submission, transfer listing, and seeding control."""
 
 import qbittorrentapi
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter
 from fastapi import status as fastapi_status
 from qbittorrentapi.exceptions import Conflict409Error
 
 from torrent_downloader.core.constants import TAG_TRANSFERS
+from torrent_downloader.core.errors import AppException, ErrorCode
 from torrent_downloader.schemas.downloads import DownloadRequest, DownloadResponse
 from torrent_downloader.schemas.transfers import TransferInfoResponse
 from torrent_downloader.services.qbittorrent import (
@@ -25,19 +26,19 @@ router = APIRouter(tags=[TAG_TRANSFERS])
     summary="Submits a selected magnet URI to the qBittorrent daemon.",
 )
 def api_trigger_download(payload: DownloadRequest) -> DownloadResponse:
-    """Submit a magnet URI to the qBittorrent daemon, enforcing VPN binding beforehand.
-
-    Raises:
-        HTTPException: 503 if the qBittorrent client is unreachable.
-        HTTPException: 403 if qBittorrent is not bound to the required VPN interface.
-    """
+    """Submit a magnet URI to the qBittorrent daemon, enforcing VPN binding beforehand."""
     client: qbittorrentapi.Client | None = get_torrent_client()
     if not client:
-        raise HTTPException(status_code=503, detail="qBittorrent client unavailable.")
+        raise AppException(
+            status_code=fastapi_status.HTTP_503_SERVICE_UNAVAILABLE,
+            code=ErrorCode.QB_UNAVAILABLE,
+            detail="qBittorrent client unavailable.",
+        )
 
     if not is_vpn_bound(client):
-        raise HTTPException(
-            status_code=403,
+        raise AppException(
+            status_code=fastapi_status.HTTP_403_FORBIDDEN,
+            code=ErrorCode.VPN_NOT_BOUND,
             detail="qBittorrent is not bound to the required VPN interface.",
         )
 
@@ -70,14 +71,15 @@ def api_get_transfers() -> TransferInfoResponse:
     """Return a snapshot of all active qBittorrent transfers."""
     client: qbittorrentapi.Client | None = get_torrent_client()
     if not client:
-        raise HTTPException(status_code=503, detail="qBittorrent client unavailable.")
-
-    try:
-        return TransferInfoResponse(
-            status="success", message="", data=get_active_transfers(client)
+        raise AppException(
+            status_code=fastapi_status.HTTP_503_SERVICE_UNAVAILABLE,
+            code=ErrorCode.QB_UNAVAILABLE,
+            detail="qBittorrent client unavailable.",
         )
-    except Exception as e:
-        return TransferInfoResponse(status="error", message=str(e), data=[])
+
+    return TransferInfoResponse(
+        status="success", message="", data=get_active_transfers(client)
+    )
 
 
 @router.post(
@@ -90,10 +92,11 @@ def api_stop_seeding_transfers() -> DownloadResponse:
     """Pause all torrents currently in the seeding state."""
     client: qbittorrentapi.Client | None = get_torrent_client()
     if not client:
-        raise HTTPException(status_code=503, detail="qBittorrent client unavailable.")
+        raise AppException(
+            status_code=fastapi_status.HTTP_503_SERVICE_UNAVAILABLE,
+            code=ErrorCode.QB_UNAVAILABLE,
+            detail="qBittorrent client unavailable.",
+        )
 
-    try:
-        stop_seeding_transfers(client)
-        return DownloadResponse(status="success", message="All seeding transfers stopped.")
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
+    stop_seeding_transfers(client)
+    return DownloadResponse(status="success", message="All seeding transfers stopped.")

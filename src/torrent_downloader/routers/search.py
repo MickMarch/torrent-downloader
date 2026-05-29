@@ -3,10 +3,11 @@
 from typing import Any, Dict, List
 
 import qbittorrentapi
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter
 from fastapi import status as fastapi_status
 
 from torrent_downloader.core.constants import TAG_SEARCH
+from torrent_downloader.core.errors import AppException, ErrorCode
 from torrent_downloader.schemas.tmdb import (
     TmdbMediaDetailResponse,
     TmdbSearchResponse,
@@ -65,7 +66,11 @@ def api_search_torrents(query: str) -> TorrentSearchResponse:
     """Search for torrents via qBittorrent plugins and return results grouped by resolution."""
     client: qbittorrentapi.Client | None = get_torrent_client()
     if not client:
-        raise HTTPException(status_code=503, detail="qBittorrent client unavailable.")
+        raise AppException(
+            status_code=fastapi_status.HTTP_503_SERVICE_UNAVAILABLE,
+            code=ErrorCode.QB_UNAVAILABLE,
+            detail="qBittorrent client unavailable.",
+        )
 
     raw_results: List[Dict[str, Any]] = search_torrents(client, query)
     processed_results: List[Dict[str, Any]] = filter_and_sort_results(raw_results)
