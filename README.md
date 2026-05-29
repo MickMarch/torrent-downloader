@@ -123,7 +123,7 @@ uv run pytest tests/test_search.py::test_filter_and_sort_results
 ## Roadmap
 
 - [x] Structured error responses — consistent `{"status", "code", "detail"}` shape via `AppException` and typed `ErrorCode` enum
-- [ ] CI/CD — GitHub Actions pipeline to run tests on push and block merges on failure
+- [x] CI/CD — GitHub Actions runs `pytest` on push to `main` and on PRs targeting `main`; enable branch protection in GitHub repo settings to block merges on failure
 - [ ] Dockerfile — containerize service for isolated deployment; docker-compose lives in the infra repo
 - [ ] API authentication — protect endpoints with an API key or JWT for orchestrator-only access
 - [ ] Request logging middleware — trace inbound calls for cross-service debugging
