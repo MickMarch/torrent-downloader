@@ -122,6 +122,12 @@ uv run pytest tests/test_search.py::test_filter_and_sort_results
 
 ## Roadmap
 
+- [ ] Structured error responses — consistent `{"status": "error", "detail": "..."}` shape across all endpoints
+- [ ] CI/CD — GitHub Actions pipeline to run tests on push and block merges on failure
 - [ ] Dockerfile — containerize service for isolated deployment; docker-compose lives in the infra repo
 - [ ] API authentication — protect endpoints with an API key or JWT for orchestrator-only access
+- [ ] Request logging middleware — trace inbound calls for cross-service debugging
+- [ ] Health check expansion — expose service version and qBittorrent reachability status
+- [ ] Rate limiting — protect against runaway orchestrator loops hammering TMDB/qBittorrent
 - [ ] Webhook/event emission — notify downstream services when a transfer completes
+- [ ] API versioning strategy — document `/api/v1/` contract and breaking-change policy
