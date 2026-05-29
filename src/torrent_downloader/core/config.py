@@ -22,7 +22,7 @@ class AppConfig(BaseSettings):
     cache_directory: str = Field(default=".cache")
     cache_expiration_seconds: int = Field(default=3600)
 
-    api_host: str = Field(default="127.0.0.1")
+    api_host: str = Field(default="0.0.0.0")
     api_port: int = Field(default=8000)
 
 

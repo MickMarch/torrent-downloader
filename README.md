@@ -63,7 +63,7 @@ MINIMUM_SEEDERS=10
 SEARCH_TIMEOUT_SECONDS=15
 CACHE_DIRECTORY=.cache
 CACHE_EXPIRATION_SECONDS=3600
-API_HOST=127.0.0.1
+API_HOST=0.0.0.0
 API_PORT=8000
 ```
 
@@ -78,6 +78,27 @@ uv run torrent-downloader
 ```
 
 API available at `http://127.0.0.1:8000`. Interactive docs at `http://127.0.0.1:8000/docs`.
+
+### Docker
+
+```bash
+docker build -t torrent-downloader .
+
+docker run -d \
+  -p 8000:8000 \
+  --env-file .env \
+  -e QB_HOST=host.docker.internal \
+  -v /host/path/to/movies:/media/movies \
+  -v /host/path/to/downloads:/media/downloads \
+  --name torrent-downloader \
+  torrent-downloader
+```
+
+- `--env-file .env` loads all credentials from your local `.env` — avoids exposing secrets in shell history or `docker ps` output.
+- `QB_HOST=host.docker.internal` reaches qBittorrent running on the host (Docker Desktop on Windows/Mac). On a Linux host use the Docker bridge gateway IP (typically `172.17.0.1`) or run with `--network=host`.
+- qBittorrent Web UI must be bound to `0.0.0.0` (not `127.0.0.1`) to accept connections from the container — set this under **Tools → Preferences → Web UI → IP address**.
+- Mount each host media directory via `-v`. The container-side path (e.g. `/media/movies`) is what callers pass to `/api/v1/storage?path=` and what the orchestrator constructs `save_path` values from. Adding a new media destination requires stopping and restarting the container with an additional `-v` flag; in production this is managed by the docker-compose in the infra repo.
+- `API_HOST` defaults to `0.0.0.0` — no override needed for containerized deployments.
 
 ---
 
@@ -96,13 +117,14 @@ API available at `http://127.0.0.1:8000`. Interactive docs at `http://127.0.0.1:
 | `GET` | `/api/v1/transfers` | List all active transfers |
 | `POST` | `/api/v1/transfers/stop-seeding` | Pause all seeding torrents |
 
-The `/api/v1/download` endpoint requires the caller to provide the full `save_path`. Save path construction is the responsibility of the orchestrating application.
+The `/api/v1/download` endpoint requires the caller to provide the full `save_path`. Save path construction is the responsibility of the orchestrating application — this service has no knowledge of media library layout.
 
 ### Inter-service communication
 
 This service is stateless and cache-only — it holds no persistent records. Orchestrators should:
 
-- Call `/api/v1/storage` before dispatching a download to verify sufficient disk space
+- Own all `save_path` logic — construct paths based on media type, title, and library layout before calling this service
+- Call `/api/v1/storage?path=` before dispatching a download to verify sufficient disk space on the target volume
 - Poll `/api/v1/transfers` to detect when a download completes, then notify downstream services (e.g. a media library cataloguer)
 - Treat all responses as ephemeral; do not use this service as a source of truth for library state
 
@@ -124,7 +146,7 @@ uv run pytest tests/test_search.py::test_filter_and_sort_results
 
 - [x] Structured error responses — consistent `{"status", "code", "detail"}` shape via `AppException` and typed `ErrorCode` enum
 - [x] CI/CD — GitHub Actions runs `pytest` on push to `main` and on PRs targeting `main`; enable branch protection in GitHub repo settings to block merges on failure
-- [ ] Dockerfile — containerize service for isolated deployment; docker-compose lives in the infra repo
+- [x] Dockerfile — containerize service for isolated deployment; docker-compose lives in the infra repo
 - [ ] API authentication — protect endpoints with an API key or JWT for orchestrator-only access
 - [ ] Request logging middleware — trace inbound calls for cross-service debugging
 - [ ] Health check expansion — expose service version and qBittorrent reachability status
