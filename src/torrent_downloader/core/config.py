@@ -11,11 +11,11 @@ class AppConfig(BaseSettings):
 
     qb_host: str = Field(default="127.0.0.1")
     qb_port: int = Field(default=8080)
-    qb_api_key: str = Field(...)
+    qb_api_key: str | None = Field(default=None)
 
     target_language: str = Field(default="en")
     minimum_seeders: int = Field(default=10)
-    tmdb_api_key: str = Field(...)
+    tmdb_api_key: str | None = Field(default=None)
 
     search_timeout_seconds: int = Field(default=15)
 
