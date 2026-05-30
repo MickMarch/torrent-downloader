@@ -5,7 +5,14 @@ from fastapi.testclient import TestClient
 
 from torrent_downloader.main import app
 
+TEST_API_KEY = "test-api-key"
+
+
+@pytest.fixture(autouse=True)
+def patch_api_key(mocker):
+    mocker.patch("torrent_downloader.core.auth.config", api_key=TEST_API_KEY)
+
 
 @pytest.fixture
 def client() -> TestClient:
-    return TestClient(app)
+    return TestClient(app, headers={"X-API-Key": TEST_API_KEY})

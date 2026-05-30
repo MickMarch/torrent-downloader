@@ -57,6 +57,9 @@ QB_API_KEY=your_qbittorrent_api_key
 # TMDB
 TMDB_API_KEY=your_tmdb_api_key
 
+# API authentication
+API_KEY=your_api_key
+
 # Optional — defaults shown
 TARGET_LANGUAGE=en
 MINIMUM_SEEDERS=10
@@ -117,6 +120,8 @@ docker run -d \
 | `GET` | `/api/v1/transfers` | List all active transfers |
 | `POST` | `/api/v1/transfers/stop-seeding` | Pause all seeding torrents |
 
+All endpoints except `/api/v1/health` require an `X-API-Key` header matching the `API_KEY` environment variable. Requests with a missing or incorrect key receive a `403` response with `"code": "UNAUTHORIZED"`. The health endpoint is intentionally public to allow liveness probes without credentials.
+
 The `/api/v1/download` endpoint requires the caller to provide the full `save_path`. Save path construction is the responsibility of the orchestrating application — this service has no knowledge of media library layout.
 
 ### Inter-service communication
@@ -147,7 +152,7 @@ uv run pytest tests/test_search.py::test_filter_and_sort_results
 - [x] Structured error responses — consistent `{"status", "code", "detail"}` shape via `AppException` and typed `ErrorCode` enum
 - [x] CI/CD — GitHub Actions runs `pytest` on push to `main` and on PRs targeting `main`; enable branch protection in GitHub repo settings to block merges on failure
 - [x] Dockerfile — containerize service for isolated deployment; docker-compose lives in the infra repo
-- [ ] API authentication — protect endpoints with an API key or JWT for orchestrator-only access
+- [x] API authentication — static `X-API-Key` header validated against `API_KEY` env var; all endpoints protected except `/health`
 - [ ] Request logging middleware — trace inbound calls for cross-service debugging
 - [ ] Health check expansion — expose service version and qBittorrent reachability status
 - [ ] Rate limiting — protect against runaway orchestrator loops hammering TMDB/qBittorrent

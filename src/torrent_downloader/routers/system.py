@@ -3,9 +3,10 @@
 import time
 
 import qbittorrentapi
-from fastapi import APIRouter
+from fastapi import APIRouter, Depends
 from fastapi import status as fastapi_status
 
+from torrent_downloader.core.auth import verify_api_key
 from torrent_downloader.core.cache import app_cache
 from torrent_downloader.core.constants import API_START_TIME, TAG_SYSTEM
 from torrent_downloader.core.errors import AppException, ErrorCode
@@ -44,6 +45,7 @@ def api_health_check() -> HealthResponse:
     response_model=DiskUsageResponse,
     status_code=fastapi_status.HTTP_200_OK,
     summary="Returns disk usage for the given save path.",
+    dependencies=[Depends(verify_api_key)],
 )
 def get_storage_info(path: str) -> DiskUsageResponse:
     """Return total, used, and free disk space for the specified save path."""
@@ -75,6 +77,7 @@ def get_storage_info(path: str) -> DiskUsageResponse:
     response_model=CacheClearResponse,
     status_code=fastapi_status.HTTP_200_OK,
     summary="Clears all cached data.",
+    dependencies=[Depends(verify_api_key)],
 )
 def clear_cache() -> CacheClearResponse:
     """Evict all entries from the application cache."""

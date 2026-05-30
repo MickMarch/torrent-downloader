@@ -1,11 +1,12 @@
 """Application entry point: FastAPI app factory and uvicorn launch helpers."""
 
 import uvicorn
-from fastapi import FastAPI, Request
+from fastapi import Depends, FastAPI, Request
 from fastapi.exceptions import RequestValidationError
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 
+from torrent_downloader.core.auth import verify_api_key
 from torrent_downloader.core.config import config
 from torrent_downloader.core.errors import AppException, ErrorCode
 from torrent_downloader.core.logger import app_logger
@@ -38,8 +39,8 @@ async def validation_exception_handler(request: Request, exc: RequestValidationE
     )
 
 app.include_router(system.router, prefix="/api/v1")
-app.include_router(search.router, prefix="/api/v1")
-app.include_router(transfers.router, prefix="/api/v1")
+app.include_router(search.router, prefix="/api/v1", dependencies=[Depends(verify_api_key)])
+app.include_router(transfers.router, prefix="/api/v1", dependencies=[Depends(verify_api_key)])
 
 
 def main() -> None:

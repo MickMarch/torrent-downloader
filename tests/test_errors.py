@@ -24,6 +24,9 @@ class TestErrorCode:
     def test_has_internal_error(self) -> None:
         assert ErrorCode.INTERNAL_ERROR
 
+    def test_has_unauthorized(self) -> None:
+        assert ErrorCode.UNAUTHORIZED
+
     def test_values_are_strings(self) -> None:
         for code in ErrorCode:
             assert isinstance(code.value, str)

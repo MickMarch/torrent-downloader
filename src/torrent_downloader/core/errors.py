@@ -10,6 +10,7 @@ class ErrorCode(str, Enum):
     PERMISSION_DENIED = "PERMISSION_DENIED"
     INVALID_INPUT = "INVALID_INPUT"
     INTERNAL_ERROR = "INTERNAL_ERROR"
+    UNAUTHORIZED = "UNAUTHORIZED"
 
 
 class AppException(Exception):
