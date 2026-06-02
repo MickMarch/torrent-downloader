@@ -1,5 +1,6 @@
 """Application entry point: FastAPI app factory and uvicorn launch helpers."""
 
+import importlib.metadata
 import uvicorn
 from fastapi import Depends, FastAPI, Request
 from fastapi.exceptions import RequestValidationError
@@ -17,7 +18,7 @@ from torrent_downloader.routers import search, system, transfers
 
 app: FastAPI = FastAPI(
     title="Torrent Downloader API",
-    version="1.0.0",
+    version=importlib.metadata.version("torrent-downloader"),
     description=(
         "FastAPI microservice wrapping qBittorrent and TMDB. "
         "Exposes endpoints for media metadata search, torrent search, download submission, "

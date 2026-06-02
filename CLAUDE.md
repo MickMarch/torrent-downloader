@@ -80,6 +80,10 @@ FastAPI REST API wrapping two external integrations: qBittorrent (torrent client
 
 **OpenAPI:** Custom `openapi()` override in `main.py` sets `/health` security to `[]` (no auth required). All other routes inherit `APIKeyHeader` security scheme auto-generated from the `Security(APIKeyHeader)` dependency. Error response shapes declared via `responses=` on each route using `ErrorResponse` schema.
 
+## Versioning
+
+Version is derived from git tags via `hatch-vcs` - do not hardcode it anywhere. `src/torrent_downloader/_version.py` is generated at build time and is gitignored. To release a new version: merge to main, tag (`git tag -a vX.Y.Z -m "vX.Y.Z"`), push the tag (`git push origin vX.Y.Z`), create a GitHub Release from the tag, update `CHANGELOG.md` before tagging.
+
 ## Testing patterns
 
 - Always use `uv run pytest`, never `python -m pytest`

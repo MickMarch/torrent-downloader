@@ -1,11 +1,11 @@
 [build-system]
-requires = ["hatchling"]
+requires = ["hatchling", "hatch-vcs"]
 build-backend = "hatchling.build"
 
 [project]
 name = "torrent-downloader"
-version = "0.1.0"
-description = "Add your description here"
+dynamic = ["version"]
+description = "FastAPI microservice wrapping qBittorrent and TMDB for media download automation."
 readme = "README.md"
 requires-python = ">=3.12"
 dependencies = [
@@ -23,6 +23,12 @@ dependencies = [
 torrent-downloader = "torrent_downloader.main:main"
 torrent-downloader-dev = "torrent_downloader.main:dev"
 
+
+[tool.hatch.version]
+source = "vcs"
+
+[tool.hatch.build.hooks.vcs]
+version-file = "src/torrent_downloader/_version.py"
 
 [dependency-groups]
 dev = [
