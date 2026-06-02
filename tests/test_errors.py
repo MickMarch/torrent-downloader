@@ -27,6 +27,9 @@ class TestErrorCode:
     def test_has_unauthorized(self) -> None:
         assert ErrorCode.UNAUTHORIZED
 
+    def test_has_rate_limited(self) -> None:
+        assert ErrorCode.RATE_LIMITED
+
     def test_values_are_strings(self) -> None:
         for code in ErrorCode:
             assert isinstance(code.value, str)

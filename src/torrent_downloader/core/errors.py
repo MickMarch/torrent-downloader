@@ -11,6 +11,7 @@ class ErrorCode(str, Enum):
     INVALID_INPUT = "INVALID_INPUT"
     INTERNAL_ERROR = "INTERNAL_ERROR"
     UNAUTHORIZED = "UNAUTHORIZED"
+    RATE_LIMITED = "RATE_LIMITED"
 
 
 class AppException(Exception):

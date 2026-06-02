@@ -3,11 +3,12 @@
 import time
 
 import qbittorrentapi
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Depends, Request
 from fastapi import status as fastapi_status
 
 from torrent_downloader.core.auth import verify_api_key
 from torrent_downloader.core.cache import app_cache
+from torrent_downloader.core.limiter import RATE_LIMIT_DEFAULT, limiter
 from torrent_downloader.core.constants import API_START_TIME, TAG_SYSTEM
 from torrent_downloader.core.errors import AppException, ErrorCode
 from torrent_downloader.core.logger import app_logger
@@ -24,6 +25,7 @@ router = APIRouter(tags=[TAG_SYSTEM])
     status_code=fastapi_status.HTTP_200_OK,
     summary="Returns the current operational status and uptime of the API.",
 )
+@limiter.exempt
 def api_health_check() -> HealthResponse:
     """Return current uptime and VPN binding status for liveness monitoring."""
     uptime_seconds: float = time.time() - API_START_TIME
@@ -47,7 +49,8 @@ def api_health_check() -> HealthResponse:
     summary="Returns disk usage for the given save path.",
     dependencies=[Depends(verify_api_key)],
 )
-def get_storage_info(path: str) -> DiskUsageResponse:
+@limiter.limit(RATE_LIMIT_DEFAULT)
+def get_storage_info(request: Request, path: str) -> DiskUsageResponse:
     """Return total, used, and free disk space for the specified save path."""
     try:
         usage = get_disk_usage(path)
@@ -79,7 +82,8 @@ def get_storage_info(path: str) -> DiskUsageResponse:
     summary="Clears all cached data.",
     dependencies=[Depends(verify_api_key)],
 )
-def clear_cache() -> CacheClearResponse:
+@limiter.limit(RATE_LIMIT_DEFAULT)
+def clear_cache(request: Request) -> CacheClearResponse:
     """Evict all entries from the application cache."""
     app_cache.clear()
     app_logger.info("Application cache cleared.")

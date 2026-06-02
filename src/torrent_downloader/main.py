@@ -5,15 +5,33 @@ from fastapi import Depends, FastAPI, Request
 from fastapi.exceptions import RequestValidationError
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
+from slowapi.errors import RateLimitExceeded
 
 from torrent_downloader.core.auth import verify_api_key
 from torrent_downloader.core.config import config
 from torrent_downloader.core.errors import AppException, ErrorCode
+from torrent_downloader.core.limiter import limiter
 from torrent_downloader.core.logger import app_logger
 from torrent_downloader.core.middleware import RequestLoggingMiddleware
 from torrent_downloader.routers import search, system, transfers
 
 app: FastAPI = FastAPI(title="Torrent Downloader API")
+app.state.limiter = limiter
+
+
+@app.exception_handler(RateLimitExceeded)
+async def rate_limit_exceeded_handler(request: Request, exc: RateLimitExceeded) -> JSONResponse:
+    retry_after: int = exc.limit.limit.GRANULARITY.seconds
+    response = JSONResponse(
+        status_code=429,
+        content={
+            "status": "error",
+            "code": ErrorCode.RATE_LIMITED.value,
+            "detail": f"Rate limit exceeded. Retry after {retry_after} seconds.",
+        },
+    )
+    response.headers["Retry-After"] = str(retry_after)
+    return response
 
 app.add_middleware(RequestLoggingMiddleware)
 app.add_middleware(

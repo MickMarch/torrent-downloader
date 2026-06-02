@@ -3,10 +3,11 @@
 from typing import Any, Dict, List
 
 import qbittorrentapi
-from fastapi import APIRouter
+from fastapi import APIRouter, Request
 from fastapi import status as fastapi_status
 
 from torrent_downloader.core.constants import TAG_SEARCH
+from torrent_downloader.core.limiter import RATE_LIMIT_SEARCH, limiter
 from torrent_downloader.core.errors import AppException, ErrorCode
 from torrent_downloader.schemas.tmdb import (
     TmdbMediaDetailResponse,
@@ -38,7 +39,8 @@ router = APIRouter(prefix="/search", tags=[TAG_SEARCH])
     status_code=fastapi_status.HTTP_200_OK,
     summary="Returns formatted TMDB metadata for dispatcher selection.",
 )
-def api_search_tmdb(query: str) -> TmdbSearchResponse:
+@limiter.limit(RATE_LIMIT_SEARCH)
+def api_search_tmdb(request: Request, query: str) -> TmdbSearchResponse:
     """Query TMDB for movies and TV shows matching the search string."""
     raw_results: List[Dict[str, Any]] = search_tmdb_multi(query)
     formatted_results: List[TmdbSearchResult] = [
@@ -62,7 +64,8 @@ def api_search_tmdb(query: str) -> TmdbSearchResponse:
     status_code=fastapi_status.HTTP_200_OK,
     summary="Returns torrents grouped by resolution.",
 )
-def api_search_torrents(query: str) -> TorrentSearchResponse:
+@limiter.limit(RATE_LIMIT_SEARCH)
+def api_search_torrents(request: Request, query: str) -> TorrentSearchResponse:
     """Search for torrents via qBittorrent plugins and return results grouped by resolution."""
     client: qbittorrentapi.Client | None = get_torrent_client()
     if not client:
@@ -88,7 +91,8 @@ def api_search_torrents(query: str) -> TorrentSearchResponse:
     status_code=fastapi_status.HTTP_200_OK,
     summary="Returns full TMDB details for a movie by ID.",
 )
-def api_get_movie_details(movie_id: int) -> TmdbMediaDetailResponse:
+@limiter.limit(RATE_LIMIT_SEARCH)
+def api_get_movie_details(request: Request, movie_id: int) -> TmdbMediaDetailResponse:
     """Fetch detailed movie metadata from TMDB by movie ID."""
     raw: Dict[str, Any] = get_movie_details(movie_id)
     if not raw:
@@ -102,7 +106,8 @@ def api_get_movie_details(movie_id: int) -> TmdbMediaDetailResponse:
     status_code=fastapi_status.HTTP_200_OK,
     summary="Returns full TMDB details for a TV series by ID.",
 )
-def api_get_tv_details(series_id: int) -> TmdbMediaDetailResponse:
+@limiter.limit(RATE_LIMIT_SEARCH)
+def api_get_tv_details(request: Request, series_id: int) -> TmdbMediaDetailResponse:
     """Fetch detailed TV series metadata from TMDB by series ID."""
     raw: Dict[str, Any] = get_tv_details(series_id)
     if not raw:

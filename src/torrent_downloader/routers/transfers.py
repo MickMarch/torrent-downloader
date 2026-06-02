@@ -1,12 +1,13 @@
 """Transfers router: download submission, transfer listing, and seeding control."""
 
 import qbittorrentapi
-from fastapi import APIRouter
+from fastapi import APIRouter, Request
 from fastapi import status as fastapi_status
 from qbittorrentapi.exceptions import Conflict409Error
 
 from torrent_downloader.core.constants import TAG_TRANSFERS
 from torrent_downloader.core.errors import AppException, ErrorCode
+from torrent_downloader.core.limiter import RATE_LIMIT_DEFAULT, limiter
 from torrent_downloader.schemas.downloads import DownloadRequest, DownloadResponse
 from torrent_downloader.schemas.transfers import TransferInfoResponse
 from torrent_downloader.services.qbittorrent import (
@@ -25,7 +26,8 @@ router = APIRouter(tags=[TAG_TRANSFERS])
     status_code=fastapi_status.HTTP_202_ACCEPTED,
     summary="Submits a selected magnet URI to the qBittorrent daemon.",
 )
-def api_trigger_download(payload: DownloadRequest) -> DownloadResponse:
+@limiter.limit(RATE_LIMIT_DEFAULT)
+def api_trigger_download(request: Request, payload: DownloadRequest) -> DownloadResponse:
     """Submit a magnet URI to the qBittorrent daemon, enforcing VPN binding beforehand."""
     client: qbittorrentapi.Client | None = get_torrent_client()
     if not client:
@@ -67,7 +69,8 @@ def api_trigger_download(payload: DownloadRequest) -> DownloadResponse:
     status_code=fastapi_status.HTTP_200_OK,
     summary="Returns the current state of all qBittorrent transfers.",
 )
-def api_get_transfers() -> TransferInfoResponse:
+@limiter.limit(RATE_LIMIT_DEFAULT)
+def api_get_transfers(request: Request) -> TransferInfoResponse:
     """Return a snapshot of all active qBittorrent transfers."""
     client: qbittorrentapi.Client | None = get_torrent_client()
     if not client:
@@ -88,7 +91,8 @@ def api_get_transfers() -> TransferInfoResponse:
     status_code=fastapi_status.HTTP_202_ACCEPTED,
     summary="Changes the state of all seeding qBittorrent transfers to stopped.",
 )
-def api_stop_seeding_transfers() -> DownloadResponse:
+@limiter.limit(RATE_LIMIT_DEFAULT)
+def api_stop_seeding_transfers(request: Request) -> DownloadResponse:
     """Pause all torrents currently in the seeding state."""
     client: qbittorrentapi.Client | None = get_torrent_client()
     if not client:

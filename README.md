@@ -122,6 +122,10 @@ docker run -d \
 
 All endpoints except `/api/v1/health` require an `X-API-Key` header matching the `API_KEY` environment variable. Requests with a missing or incorrect key receive a `403` response with `"code": "UNAUTHORIZED"`. The health endpoint is intentionally public to allow liveness probes without credentials.
 
+Every response includes an `X-Request-ID` header containing a UUID generated per request. Use this value to correlate log entries across services when debugging multi-step workflows.
+
+Rate limits are enforced per IP. General endpoints allow 60 requests/minute; search endpoints (`/search/tmdb`, `/search/torrents`, `/search/tmdb/movie/*`, `/search/tmdb/tv/*`) allow 20 requests/minute. Exceeded limits return `429` with a `Retry-After` header (seconds) and `"code": "RATE_LIMITED"`. The `/health` endpoint is exempt.
+
 The `/api/v1/download` endpoint requires the caller to provide the full `save_path`. Save path construction is the responsibility of the orchestrating application — this service has no knowledge of media library layout.
 
 ### Inter-service communication
@@ -153,8 +157,8 @@ uv run pytest tests/test_search.py::test_filter_and_sort_results
 - [x] CI/CD — GitHub Actions runs `pytest` on push to `main` and on PRs targeting `main`; enable branch protection in GitHub repo settings to block merges on failure
 - [x] Dockerfile — containerize service for isolated deployment; docker-compose lives in the infra repo
 - [x] API authentication — static `X-API-Key` header validated against `API_KEY` env var; all endpoints protected except `/health`
-- [ ] Request logging middleware — trace inbound calls for cross-service debugging
+- [x] Request logging middleware — logs method, path, status, and duration per request; injects `X-Request-ID` UUID header for cross-service call correlation
 - [ ] Health check expansion — expose service version and qBittorrent reachability status
-- [ ] Rate limiting — protect against runaway orchestrator loops hammering TMDB/qBittorrent
+- [x] Rate limiting — 60 req/min global, 20 req/min on search endpoints; `429` with `Retry-After` header; `/health` exempt
 - [ ] Webhook/event emission — notify downstream services when a transfer completes
 - [ ] API versioning strategy — document `/api/v1/` contract and breaking-change policy

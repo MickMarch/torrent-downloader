@@ -15,6 +15,7 @@ dependencies = [
     "pydantic-settings>=2.14.1",
     "qbittorrent-api>=2026.5.1",
     "requests>=2.34.0",
+    "slowapi>=0.1.9",
     "uvicorn>=0.46.0",
 ]
 
