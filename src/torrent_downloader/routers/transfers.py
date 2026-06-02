@@ -8,6 +8,7 @@ from qbittorrentapi.exceptions import Conflict409Error
 from torrent_downloader.core.constants import TAG_TRANSFERS
 from torrent_downloader.core.errors import AppException, ErrorCode
 from torrent_downloader.core.limiter import RATE_LIMIT_DEFAULT, limiter
+from torrent_downloader.schemas.errors import ErrorResponse
 from torrent_downloader.schemas.downloads import DownloadRequest, DownloadResponse
 from torrent_downloader.schemas.transfers import TransferInfoResponse
 from torrent_downloader.services.qbittorrent import (
@@ -20,11 +21,19 @@ from torrent_downloader.services.qbittorrent import (
 router = APIRouter(tags=[TAG_TRANSFERS])
 
 
+_QB_ERROR_RESPONSES = {
+    403: {"model": ErrorResponse, "description": "Missing/invalid API key or VPN not bound."},
+    429: {"model": ErrorResponse, "description": "Rate limit exceeded."},
+    503: {"model": ErrorResponse, "description": "qBittorrent client unavailable."},
+}
+
+
 @router.post(
     "/download",
     response_model=DownloadResponse,
     status_code=fastapi_status.HTTP_202_ACCEPTED,
     summary="Submits a selected magnet URI to the qBittorrent daemon.",
+    responses=_QB_ERROR_RESPONSES,
 )
 @limiter.limit(RATE_LIMIT_DEFAULT)
 def api_trigger_download(request: Request, payload: DownloadRequest) -> DownloadResponse:
@@ -68,6 +77,7 @@ def api_trigger_download(request: Request, payload: DownloadRequest) -> Download
     response_model=TransferInfoResponse,
     status_code=fastapi_status.HTTP_200_OK,
     summary="Returns the current state of all qBittorrent transfers.",
+    responses=_QB_ERROR_RESPONSES,
 )
 @limiter.limit(RATE_LIMIT_DEFAULT)
 def api_get_transfers(request: Request) -> TransferInfoResponse:
@@ -90,6 +100,7 @@ def api_get_transfers(request: Request) -> TransferInfoResponse:
     response_model=DownloadResponse,
     status_code=fastapi_status.HTTP_202_ACCEPTED,
     summary="Changes the state of all seeding qBittorrent transfers to stopped.",
+    responses=_QB_ERROR_RESPONSES,
 )
 @limiter.limit(RATE_LIMIT_DEFAULT)
 def api_stop_seeding_transfers(request: Request) -> DownloadResponse:

@@ -15,7 +15,24 @@ from torrent_downloader.core.logger import app_logger
 from torrent_downloader.core.middleware import RequestLoggingMiddleware
 from torrent_downloader.routers import search, system, transfers
 
-app: FastAPI = FastAPI(title="Torrent Downloader API")
+app: FastAPI = FastAPI(
+    title="Torrent Downloader API",
+    version="1.0.0",
+    description=(
+        "FastAPI microservice wrapping qBittorrent and TMDB. "
+        "Exposes endpoints for media metadata search, torrent search, download submission, "
+        "and disk usage reporting. Intended to be called by an orchestrating service "
+        "such as a Discord bot or media library manager.\n\n"
+        "All endpoints except `/api/v1/health` require an `X-API-Key` header. "
+        "Rate limits: 60 req/min general, 20 req/min on search endpoints."
+    ),
+    contact={"name": "Michael Marchand", "url": "https://github.com/MickMarch/torrent_downloader"},
+    openapi_tags=[
+        {"name": "System", "description": "Health, storage, and cache management."},
+        {"name": "Search", "description": "TMDB metadata lookup and torrent search."},
+        {"name": "Transfers", "description": "Download submission and transfer management."},
+    ],
+)
 app.state.limiter = limiter
 
 
@@ -61,6 +78,29 @@ async def validation_exception_handler(request: Request, exc: RequestValidationE
 app.include_router(system.router, prefix="/api/v1")
 app.include_router(search.router, prefix="/api/v1", dependencies=[Depends(verify_api_key)])
 app.include_router(transfers.router, prefix="/api/v1", dependencies=[Depends(verify_api_key)])
+
+
+def custom_openapi() -> dict:
+    if app.openapi_schema:
+        return app.openapi_schema
+    from fastapi.openapi.utils import get_openapi
+    schema = get_openapi(
+        title=app.title,
+        version=app.version,
+        description=app.description,
+        contact=app.contact,
+        tags=app.openapi_tags,
+        routes=app.routes,
+    )
+    for path, methods in schema.get("paths", {}).items():
+        for method, operation in methods.items():
+            if path == "/api/v1/health":
+                operation["security"] = []
+    app.openapi_schema = schema
+    return schema
+
+
+app.openapi = custom_openapi  # type: ignore[method-assign]
 
 
 def main() -> None:

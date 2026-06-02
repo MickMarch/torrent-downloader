@@ -160,5 +160,6 @@ uv run pytest tests/test_search.py::test_filter_and_sort_results
 - [x] Request logging middleware — logs method, path, status, and duration per request; injects `X-Request-ID` UUID header for cross-service call correlation
 - [ ] Health check expansion — expose service version and qBittorrent reachability status
 - [x] Rate limiting — 60 req/min global, 20 req/min on search endpoints; `429` with `Retry-After` header; `/health` exempt
+- [x] OpenAPI documentation — auth scheme, error response shapes, and app metadata exposed via `/docs` and `/openapi.json`
 - [ ] Webhook/event emission — notify downstream services when a transfer completes
 - [ ] API versioning strategy — document `/api/v1/` contract and breaking-change policy

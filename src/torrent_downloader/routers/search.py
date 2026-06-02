@@ -8,6 +8,7 @@ from fastapi import status as fastapi_status
 
 from torrent_downloader.core.constants import TAG_SEARCH
 from torrent_downloader.core.limiter import RATE_LIMIT_SEARCH, limiter
+from torrent_downloader.schemas.errors import ErrorResponse
 from torrent_downloader.core.errors import AppException, ErrorCode
 from torrent_downloader.schemas.tmdb import (
     TmdbMediaDetailResponse,
@@ -33,11 +34,19 @@ from torrent_downloader.services.tmdb import (
 router = APIRouter(prefix="/search", tags=[TAG_SEARCH])
 
 
+_SEARCH_ERROR_RESPONSES = {
+    403: {"model": ErrorResponse, "description": "Missing or invalid API key."},
+    422: {"model": ErrorResponse, "description": "Missing or invalid query parameter."},
+    429: {"model": ErrorResponse, "description": "Rate limit exceeded."},
+}
+
+
 @router.get(
     "/tmdb",
     response_model=TmdbSearchResponse,
     status_code=fastapi_status.HTTP_200_OK,
     summary="Returns formatted TMDB metadata for dispatcher selection.",
+    responses=_SEARCH_ERROR_RESPONSES,
 )
 @limiter.limit(RATE_LIMIT_SEARCH)
 def api_search_tmdb(request: Request, query: str) -> TmdbSearchResponse:
@@ -63,6 +72,10 @@ def api_search_tmdb(request: Request, query: str) -> TmdbSearchResponse:
     response_model=TorrentSearchResponse,
     status_code=fastapi_status.HTTP_200_OK,
     summary="Returns torrents grouped by resolution.",
+    responses={
+        **_SEARCH_ERROR_RESPONSES,
+        503: {"model": ErrorResponse, "description": "qBittorrent client unavailable."},
+    },
 )
 @limiter.limit(RATE_LIMIT_SEARCH)
 def api_search_torrents(request: Request, query: str) -> TorrentSearchResponse:
@@ -90,6 +103,7 @@ def api_search_torrents(request: Request, query: str) -> TorrentSearchResponse:
     response_model=TmdbMediaDetailResponse,
     status_code=fastapi_status.HTTP_200_OK,
     summary="Returns full TMDB details for a movie by ID.",
+    responses=_SEARCH_ERROR_RESPONSES,
 )
 @limiter.limit(RATE_LIMIT_SEARCH)
 def api_get_movie_details(request: Request, movie_id: int) -> TmdbMediaDetailResponse:
@@ -105,6 +119,7 @@ def api_get_movie_details(request: Request, movie_id: int) -> TmdbMediaDetailRes
     response_model=TmdbMediaDetailResponse,
     status_code=fastapi_status.HTTP_200_OK,
     summary="Returns full TMDB details for a TV series by ID.",
+    responses=_SEARCH_ERROR_RESPONSES,
 )
 @limiter.limit(RATE_LIMIT_SEARCH)
 def api_get_tv_details(request: Request, series_id: int) -> TmdbMediaDetailResponse:

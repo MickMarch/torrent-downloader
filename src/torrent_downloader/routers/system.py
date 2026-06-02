@@ -12,6 +12,7 @@ from torrent_downloader.core.limiter import RATE_LIMIT_DEFAULT, limiter
 from torrent_downloader.core.constants import API_START_TIME, TAG_SYSTEM
 from torrent_downloader.core.errors import AppException, ErrorCode
 from torrent_downloader.core.logger import app_logger
+from torrent_downloader.schemas.errors import ErrorResponse
 from torrent_downloader.schemas.system import CacheClearResponse, DiskUsageResponse, HealthResponse
 from torrent_downloader.services.qbittorrent import get_torrent_client, is_vpn_bound
 from torrent_downloader.services.storage import get_disk_usage
@@ -48,6 +49,13 @@ def api_health_check() -> HealthResponse:
     status_code=fastapi_status.HTTP_200_OK,
     summary="Returns disk usage for the given save path.",
     dependencies=[Depends(verify_api_key)],
+    responses={
+        403: {"model": ErrorResponse, "description": "Missing/invalid API key or permission denied on path."},
+        404: {"model": ErrorResponse, "description": "Path not found."},
+        422: {"model": ErrorResponse, "description": "Missing or invalid query parameter."},
+        429: {"model": ErrorResponse, "description": "Rate limit exceeded."},
+        500: {"model": ErrorResponse, "description": "Disk usage check failed."},
+    },
 )
 @limiter.limit(RATE_LIMIT_DEFAULT)
 def get_storage_info(request: Request, path: str) -> DiskUsageResponse:
@@ -81,6 +89,10 @@ def get_storage_info(request: Request, path: str) -> DiskUsageResponse:
     status_code=fastapi_status.HTTP_200_OK,
     summary="Clears all cached data.",
     dependencies=[Depends(verify_api_key)],
+    responses={
+        403: {"model": ErrorResponse, "description": "Missing or invalid API key."},
+        429: {"model": ErrorResponse, "description": "Rate limit exceeded."},
+    },
 )
 @limiter.limit(RATE_LIMIT_DEFAULT)
 def clear_cache(request: Request) -> CacheClearResponse:
