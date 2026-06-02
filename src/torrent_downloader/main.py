@@ -10,10 +10,12 @@ from torrent_downloader.core.auth import verify_api_key
 from torrent_downloader.core.config import config
 from torrent_downloader.core.errors import AppException, ErrorCode
 from torrent_downloader.core.logger import app_logger
+from torrent_downloader.core.middleware import RequestLoggingMiddleware
 from torrent_downloader.routers import search, system, transfers
 
 app: FastAPI = FastAPI(title="Torrent Downloader API")
 
+app.add_middleware(RequestLoggingMiddleware)
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],
