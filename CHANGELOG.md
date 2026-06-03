@@ -5,6 +5,16 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.0.1] - 2026-06-03
+
+### Fixed
+
+- Docker build failure caused by `hatch-vcs` being unable to resolve the package version without git history in the build context. Adds `APP_VERSION` build arg passed as `SETUPTOOLS_SCM_PRETEND_VERSION` at build time.
+
+### Documentation
+
+- Clarified `QB_HOST` in `.env.example`: use `127.0.0.1` for host deployments, `host.docker.internal` for Docker.
+
 ## [1.0.0] - 2026-06-02
 
 ### Added
