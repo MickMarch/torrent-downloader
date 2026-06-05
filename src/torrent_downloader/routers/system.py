@@ -80,7 +80,7 @@ def get_storage_info(request: Request, path: str) -> DiskUsageResponse:
             code=ErrorCode.INTERNAL_ERROR,
             detail="Disk usage check failed.",
         )
-    return DiskUsageResponse(path=path, **usage)
+    return DiskUsageResponse(status="success", path=path, **usage)
 
 
 @router.delete(
@@ -99,4 +99,4 @@ def clear_cache(request: Request) -> CacheClearResponse:
     """Evict all entries from the application cache."""
     app_cache.clear()
     app_logger.info("Application cache cleared.")
-    return CacheClearResponse(cleared=True, message="Cache cleared successfully.")
+    return CacheClearResponse(status="success", cleared=True)

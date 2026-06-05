@@ -14,13 +14,14 @@ class HealthResponse(BaseModel):
 class CacheClearResponse(BaseModel):
     """Schema for the cache clear response."""
 
+    status: str
     cleared: bool
-    message: str
 
 
 class DiskUsageResponse(BaseModel):
     """Schema for disk usage response for a given save path."""
 
+    status: str
     path: str
     total_gb: float
     used_gb: float
