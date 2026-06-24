@@ -1,16 +1,20 @@
 """Transfers router: download submission, transfer listing, and seeding control."""
 
+import re
+
 import qbittorrentapi
 from fastapi import APIRouter, Request
 from fastapi import status as fastapi_status
 from qbittorrentapi.exceptions import Conflict409Error
 
+from torrent_downloader.core.cache import app_cache
+from torrent_downloader.core.config import config
 from torrent_downloader.core.constants import TAG_TRANSFERS
 from torrent_downloader.core.errors import AppException, ErrorCode
 from torrent_downloader.core.limiter import RATE_LIMIT_DEFAULT, limiter
 from torrent_downloader.schemas.errors import ErrorResponse
 from torrent_downloader.schemas.downloads import DownloadRequest, DownloadResponse
-from torrent_downloader.schemas.transfers import TransferInfoResponse
+from torrent_downloader.schemas.transfers import TransferHashInfo, TransferInfoResponse
 from torrent_downloader.services.qbittorrent import (
     get_active_transfers,
     get_torrent_client,
@@ -20,12 +24,29 @@ from torrent_downloader.services.qbittorrent import (
 
 router = APIRouter(tags=[TAG_TRANSFERS])
 
+MAGNET_HASH_PATTERN = re.compile(r"xt=urn:btih:([a-fA-F0-9]{40}|[a-zA-Z2-7]{32})")
+MEDIA_TYPE_CACHE_PREFIX = "media_type:"
+
 
 _QB_ERROR_RESPONSES = {
     403: {"model": ErrorResponse, "description": "Missing/invalid API key or VPN not bound."},
     429: {"model": ErrorResponse, "description": "Rate limit exceeded."},
     503: {"model": ErrorResponse, "description": "qBittorrent client unavailable."},
 }
+
+
+def _extract_hash(magnet_uri: str) -> str | None:
+    """Extracts and lowercases the BTIH hash from a magnet URI."""
+    match = MAGNET_HASH_PATTERN.search(magnet_uri)
+    return match.group(1).lower() if match else None
+
+
+def _resolve_save_path(media_type: str) -> str:
+    return config.movies_path if media_type == "movie" else config.tv_path
+
+
+def _resolve_host_path(media_type: str) -> str:
+    return config.movies_host_path if media_type == "movie" else config.tv_host_path
 
 
 @router.post(
@@ -53,23 +74,33 @@ def api_trigger_download(request: Request, payload: DownloadRequest) -> Download
             detail="qBittorrent is not bound to the required VPN interface.",
         )
 
+    save_path = _resolve_save_path(payload.media_type)
+
     if payload.dry_run:
         return DownloadResponse(
             status="success",
-            message=f"Dry run bypassed download. Target: {payload.save_path}",
+            message=f"Dry run bypassed download. Target: {save_path}",
         )
 
     try:
-        client.torrents_add(urls=payload.magnet_uri, save_path=payload.save_path)
-        return DownloadResponse(
-            status="success",
-            message=f"Torrent added to queue. Save path: {payload.save_path}",
-        )
+        client.torrents_add(urls=payload.magnet_uri, save_path=save_path)
     except Conflict409Error:
         return DownloadResponse(
             status="conflict",
             message="Torrent already exists in transfer list.",
         )
+
+    torrent_hash = _extract_hash(payload.magnet_uri)
+    if torrent_hash:
+        app_cache.set(
+            f"{MEDIA_TYPE_CACHE_PREFIX}{torrent_hash}",
+            {"media_type": payload.media_type, "host_path": _resolve_host_path(payload.media_type)},
+        )
+
+    return DownloadResponse(
+        status="success",
+        message=f"Torrent added to queue. Save path: {save_path}",
+    )
 
 
 @router.get(
@@ -115,3 +146,31 @@ def api_stop_seeding_transfers(request: Request) -> DownloadResponse:
 
     stop_seeding_transfers(client)
     return DownloadResponse(status="success", message="All seeding transfers stopped.")
+
+
+@router.get(
+    "/transfers/{torrent_hash}/info",
+    response_model=TransferHashInfo,
+    status_code=fastapi_status.HTTP_200_OK,
+    summary="Returns cached media_type and host path metadata for a completed download.",
+    responses={
+        404: {"model": ErrorResponse, "description": "No cached metadata for this hash."},
+        **_QB_ERROR_RESPONSES,
+    },
+)
+@limiter.limit(RATE_LIMIT_DEFAULT)
+def api_get_transfer_info(request: Request, torrent_hash: str) -> TransferHashInfo:
+    """Look up the media_type and host path stored at download submission time."""
+    cached = app_cache.get(f"{MEDIA_TYPE_CACHE_PREFIX}{torrent_hash.lower()}")
+    if cached is None:
+        raise AppException(
+            status_code=fastapi_status.HTTP_404_NOT_FOUND,
+            code=ErrorCode.TRANSFER_NOT_FOUND,
+            detail=f"No cached metadata found for hash: {torrent_hash}",
+        )
+
+    return TransferHashInfo(
+        media_type=cached["media_type"],
+        host_path=cached["host_path"],
+        save_path=_resolve_save_path(cached["media_type"]),
+    )

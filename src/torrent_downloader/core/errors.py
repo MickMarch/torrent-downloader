@@ -12,6 +12,7 @@ class ErrorCode(str, Enum):
     INTERNAL_ERROR = "INTERNAL_ERROR"
     UNAUTHORIZED = "UNAUTHORIZED"
     RATE_LIMITED = "RATE_LIMITED"
+    TRANSFER_NOT_FOUND = "TRANSFER_NOT_FOUND"
 
 
 class AppException(Exception):

@@ -1,6 +1,10 @@
 """Schemas for the /download endpoint request and acknowledgement response."""
 
+from typing import Literal
+
 from pydantic import BaseModel
+
+MediaType = Literal["movie", "show"]
 
 
 class DownloadRequest(BaseModel):
@@ -8,12 +12,12 @@ class DownloadRequest(BaseModel):
 
     Attributes:
         magnet_uri (str): Magnet link for the torrent to be added.
-        save_path (str): Absolute path on the qBittorrent host where files will be saved.
+        media_type (MediaType): Determines which configured save path the server resolves.
         dry_run (bool): When True, validates the request without submitting it to the daemon.
     """
 
     magnet_uri: str
-    save_path: str
+    media_type: MediaType
     dry_run: bool = False
 
 

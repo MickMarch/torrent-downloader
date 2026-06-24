@@ -83,13 +83,13 @@ class TestRouterErrorCodes:
 
     def test_download_no_client_returns_qb_unavailable_code(self, client: TestClient, mocker: MockerFixture) -> None:
         mocker.patch("torrent_downloader.routers.transfers.get_torrent_client", return_value=None)
-        body = client.post("/api/v1/download", json={"magnet_uri": "magnet:?xt=urn:btih:abc", "save_path": "/tmp"}).json()
+        body = client.post("/api/v1/download", json={"magnet_uri": "magnet:?xt=urn:btih:abc", "media_type": "movie"}).json()
         assert body["code"] == ErrorCode.QB_UNAVAILABLE.value
 
     def test_download_vpn_not_bound_returns_vpn_not_bound_code(self, client: TestClient, mocker: MockerFixture) -> None:
         mocker.patch("torrent_downloader.routers.transfers.get_torrent_client", return_value=mocker.MagicMock())
         mocker.patch("torrent_downloader.routers.transfers.is_vpn_bound", return_value=False)
-        body = client.post("/api/v1/download", json={"magnet_uri": "magnet:?xt=urn:btih:abc", "save_path": "/tmp"}).json()
+        body = client.post("/api/v1/download", json={"magnet_uri": "magnet:?xt=urn:btih:abc", "media_type": "movie"}).json()
         assert body["code"] == ErrorCode.VPN_NOT_BOUND.value
 
     def test_torrent_search_no_client_returns_qb_unavailable_code(self, client: TestClient, mocker: MockerFixture) -> None:

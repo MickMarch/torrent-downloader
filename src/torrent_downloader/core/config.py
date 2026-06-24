@@ -26,5 +26,10 @@ class AppConfig(BaseSettings):
     api_host: str = Field(default="0.0.0.0")
     api_port: int = Field(default=8000)
 
+    movies_path: str
+    tv_path: str
+    movies_host_path: str
+    tv_host_path: str
+
 
 config: AppConfig = AppConfig()
