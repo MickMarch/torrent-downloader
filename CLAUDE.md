@@ -32,10 +32,7 @@ All fields are optional at import time (for CI compatibility), but the service w
 - `API_KEY` — static key required in `X-API-Key` header on all protected endpoints
 
 Required (v1.1+):
-- `MOVIES_PATH` — container-side save path (e.g. `/media/movies`); passed to qBittorrent as save_path
-- `TV_PATH` — container-side save path (e.g. `/media/tv`); passed to qBittorrent as save_path
-- `MOVIES_HOST_PATH` — host-side path for the same directory (e.g. `F:\Media\Movies`); returned to orchestrator for Jellyfin library registration
-- `TV_HOST_PATH` — host-side path for the same directory (e.g. `F:\Media\TV`); returned to orchestrator for Jellyfin library registration
+- `MEDIA_HOST_PATH` — host-side base path (e.g. `F:\Media`) where qBittorrent saves downloads. qBittorrent runs on the host, not in this container, so `save_path` sent to its API must always be a host path even when torrent-downloader itself runs containerized. The app appends `\Movies` or `\Shows` based on the request's `media_type`.
 
 Optional (defaults shown):
 - `QB_HOST=127.0.0.1`, `QB_PORT=8080`
@@ -86,54 +83,54 @@ FastAPI REST API wrapping two external integrations: qBittorrent (torrent client
 
 **OpenAPI:** Custom `openapi()` override in `main.py` sets `/health` security to `[]` (no auth required). All other routes inherit `APIKeyHeader` security scheme auto-generated from the `Security(APIKeyHeader)` dependency. Error response shapes declared via `responses=` on each route using `ErrorResponse` schema.
 
-## v1.1 spec (feat/v1.1-media-type-paths - in progress)
+## v1.1 spec (feat/v1.1-media-type-paths - implemented)
 
 ### Goal
 
 Remove `save_path` from the download request. Caller passes `media_type` instead;
-torrent-downloader resolves the container-side save path from config and stores
+torrent-downloader resolves the host-side save path from config and stores
 `hash -> (media_type, host_path)` in diskcache so the orchestrator can retrieve
 it at torrent completion time.
 
+### Why host path, not container path
+
+qBittorrent runs on the host machine, never inside this container. `save_path`
+passed to `torrents_add()` is consumed by qBittorrent's own filesystem, so it
+must always be a host-side path - even when torrent-downloader itself runs in
+Docker. torrent-downloader does not read or write the media directories itself,
+so there is no separate container-side path to track.
+
 ### Changes
 
-**`core/config.py`** — add four new required fields:
-- `movies_path: str` — container-side path, no default (must be set)
-- `tv_path: str` — container-side path, no default (must be set)
-- `movies_host_path: str` — host-side path, no default (must be set)
-- `tv_host_path: str` — host-side path, no default (must be set)
+**`core/config.py`** — single required field:
+- `media_host_path: str` — host-side base path (e.g. `F:\Media`), no default
 
-**`schemas/downloads.py`** — replace `save_path: str` with `media_type: MediaType`
-(`MediaType` is `Literal["movie", "show"]` or a `str` enum). Remove `save_path`.
-`dry_run` stays.
+**`schemas/downloads.py`** — replaced `save_path: str` with `media_type: MediaType`
+(`MediaType = Literal["movie", "show"]`). `dry_run` stays.
 
-**`routers/transfers.py` (`POST /download`)** — resolve save_path internally:
-```python
-save_path = config.movies_path if payload.media_type == "movie" else config.tv_path
-```
-After successful `torrents_add`, store in diskcache:
+**`routers/transfers.py`** — `_resolve_host_path(media_type)` joins
+`config.media_host_path` with `MEDIA_TYPE_SUBDIRS[media_type]` (`{"movie": "Movies", "show": "Shows"}`)
+using a literal backslash join (host paths are Windows paths regardless of the
+container's OS). `POST /download` passes this to `torrents_add(save_path=...)`.
+After successful add, caches:
 ```python
 app_cache.set(f"media_type:{torrent_hash}", {"media_type": payload.media_type, "host_path": host_path})
 ```
-`torrent_hash` comes from qBittorrent's response or is derived from the magnet URI.
+`torrent_hash` is extracted from the magnet URI (qBittorrent's `torrents_add()`
+does not return it directly) via `MAGNET_HASH_PATTERN` regex on
+`xt=urn:btih:([a-fA-F0-9]{40}|[a-zA-Z2-7]{32})`, normalised to lowercase.
 
-**New endpoint: `GET /api/v1/transfers/{hash}/info`** — orchestrator calls this
-after receiving the qBittorrent completion webhook. Returns:
+**`GET /api/v1/transfers/{hash}/info`** — orchestrator calls this after
+receiving the qBittorrent completion webhook. Returns:
 ```json
-{ "media_type": "movie", "host_path": "F:\\Media\\Movies", "save_path": "/media/movies" }
+{ "media_type": "movie", "host_path": "F:\\Media\\Movies" }
 ```
-Reads from diskcache. Returns 404 with `TRANSFER_NOT_FOUND` error code if hash
-unknown (e.g. download predates v1.1 or cache evicted).
+Reads from diskcache (hash lookup is case-insensitive). Returns 404 with
+`TRANSFER_NOT_FOUND` if hash unknown (e.g. download predates v1.1 or cache evicted).
 
-**`core/errors.py`** — add `TRANSFER_NOT_FOUND`.
+**`core/errors.py`** — added `TRANSFER_NOT_FOUND`.
 
-**`.env.example`** — add the four new path vars with host vs container notes.
-
-### Hash extraction from magnet URI
-
-qBittorrent's `torrents_add()` does not return the hash directly. Extract from
-magnet URI via regex on `xt=urn:btih:([a-fA-F0-9]{40}|[a-zA-Z2-7]{32})`.
-Normalise to lowercase. Store immediately after `torrents_add` succeeds.
+**`.env.example`** — `MEDIA_HOST_PATH` with host-vs-container rationale.
 
 ### Path returned to orchestrator
 

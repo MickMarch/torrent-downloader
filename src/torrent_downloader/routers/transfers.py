@@ -26,6 +26,7 @@ router = APIRouter(tags=[TAG_TRANSFERS])
 
 MAGNET_HASH_PATTERN = re.compile(r"xt=urn:btih:([a-fA-F0-9]{40}|[a-zA-Z2-7]{32})")
 MEDIA_TYPE_CACHE_PREFIX = "media_type:"
+MEDIA_TYPE_SUBDIRS = {"movie": "Movies", "show": "Shows"}
 
 
 _QB_ERROR_RESPONSES = {
@@ -41,12 +42,11 @@ def _extract_hash(magnet_uri: str) -> str | None:
     return match.group(1).lower() if match else None
 
 
-def _resolve_save_path(media_type: str) -> str:
-    return config.movies_path if media_type == "movie" else config.tv_path
-
-
 def _resolve_host_path(media_type: str) -> str:
-    return config.movies_host_path if media_type == "movie" else config.tv_host_path
+    """Builds the host-side save path qBittorrent runs on. The container never
+    sees this path on disk - it exists only on the host filesystem."""
+    base = config.media_host_path.rstrip("\\/")
+    return f"{base}\\{MEDIA_TYPE_SUBDIRS[media_type]}"
 
 
 @router.post(
@@ -74,16 +74,16 @@ def api_trigger_download(request: Request, payload: DownloadRequest) -> Download
             detail="qBittorrent is not bound to the required VPN interface.",
         )
 
-    save_path = _resolve_save_path(payload.media_type)
+    host_path = _resolve_host_path(payload.media_type)
 
     if payload.dry_run:
         return DownloadResponse(
             status="success",
-            message=f"Dry run bypassed download. Target: {save_path}",
+            message=f"Dry run bypassed download. Target: {host_path}",
         )
 
     try:
-        client.torrents_add(urls=payload.magnet_uri, save_path=save_path)
+        client.torrents_add(urls=payload.magnet_uri, save_path=host_path)
     except Conflict409Error:
         return DownloadResponse(
             status="conflict",
@@ -94,12 +94,12 @@ def api_trigger_download(request: Request, payload: DownloadRequest) -> Download
     if torrent_hash:
         app_cache.set(
             f"{MEDIA_TYPE_CACHE_PREFIX}{torrent_hash}",
-            {"media_type": payload.media_type, "host_path": _resolve_host_path(payload.media_type)},
+            {"media_type": payload.media_type, "host_path": host_path},
         )
 
     return DownloadResponse(
         status="success",
-        message=f"Torrent added to queue. Save path: {save_path}",
+        message=f"Torrent added to queue. Save path: {host_path}",
     )
 
 
@@ -172,5 +172,4 @@ def api_get_transfer_info(request: Request, torrent_hash: str) -> TransferHashIn
     return TransferHashInfo(
         media_type=cached["media_type"],
         host_path=cached["host_path"],
-        save_path=_resolve_save_path(cached["media_type"]),
     )

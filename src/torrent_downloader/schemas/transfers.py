@@ -30,4 +30,3 @@ class TransferHashInfo(BaseModel):
 
     media_type: str
     host_path: str
-    save_path: str
