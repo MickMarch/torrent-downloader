@@ -83,6 +83,20 @@ class TestDownloadCachesHashMetadata:
         cached = app_cache.get("media_type:abcdef1234567890abcdef1234567890abcdef12")
         assert cached == {"media_type": "show", "host_path": "F:\\Media\\Shows"}
 
+    def test_unparseable_hash_logs_warning_and_skips_cache(
+        self, client: TestClient, mocker: MockerFixture
+    ) -> None:
+        mock_client = mocker.MagicMock()
+        mocker.patch("torrent_downloader.routers.transfers.get_torrent_client", return_value=mock_client)
+        mocker.patch("torrent_downloader.routers.transfers.is_vpn_bound", return_value=True)
+        mock_logger = mocker.patch("torrent_downloader.routers.transfers.app_logger")
+
+        client.post(
+            "/api/v1/download", json={"magnet_uri": "magnet:?dn=NoHash", "media_type": "movie"}
+        )
+
+        mock_logger.warning.assert_called_once()
+
     def test_dry_run_does_not_cache(self, client: TestClient, mocker: MockerFixture) -> None:
         mock_client = mocker.MagicMock()
         mocker.patch("torrent_downloader.routers.transfers.get_torrent_client", return_value=mock_client)

@@ -12,6 +12,7 @@ from torrent_downloader.core.config import config
 from torrent_downloader.core.constants import TAG_TRANSFERS
 from torrent_downloader.core.errors import AppException, ErrorCode
 from torrent_downloader.core.limiter import RATE_LIMIT_DEFAULT, limiter
+from torrent_downloader.core.logger import app_logger
 from torrent_downloader.schemas.errors import ErrorResponse
 from torrent_downloader.schemas.downloads import DownloadRequest, DownloadResponse
 from torrent_downloader.schemas.transfers import TransferHashInfo, TransferInfoResponse
@@ -95,6 +96,11 @@ def api_trigger_download(request: Request, payload: DownloadRequest) -> Download
         app_cache.set(
             f"{MEDIA_TYPE_CACHE_PREFIX}{torrent_hash}",
             {"media_type": payload.media_type, "host_path": host_path},
+        )
+    else:
+        app_logger.warning(
+            f"Could not extract BTIH hash from magnet URI; media_type metadata not cached. "
+            f"Orchestrator lookup will 404 for this torrent. magnet_uri={payload.magnet_uri!r}"
         )
 
     return DownloadResponse(
