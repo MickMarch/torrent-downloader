@@ -23,3 +23,10 @@ class TransferInfoResponse(BaseModel):
     status: str
     message: str
     data: list[TransferInfo]
+
+
+class TransferHashInfo(BaseModel):
+    """Cached media-type metadata for a single torrent, keyed by hash."""
+
+    media_type: str
+    host_path: str

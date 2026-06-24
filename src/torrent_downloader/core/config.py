@@ -26,5 +26,7 @@ class AppConfig(BaseSettings):
     api_host: str = Field(default="0.0.0.0")
     api_port: int = Field(default=8000)
 
+    media_host_path: str | None = Field(default=None)
+
 
 config: AppConfig = AppConfig()

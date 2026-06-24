@@ -31,6 +31,9 @@ All fields are optional at import time (for CI compatibility), but the service w
 - `TMDB_API_KEY` — TMDB v3 API key
 - `API_KEY` — static key required in `X-API-Key` header on all protected endpoints
 
+Required (v1.1+):
+- `MEDIA_HOST_PATH` — host-side base path (e.g. `F:\Media`) where qBittorrent saves downloads. qBittorrent runs on the host, not in this container, so `save_path` sent to its API must always be a host path even when torrent-downloader itself runs containerized. The app appends `\Movies` or `\Shows` based on the request's `media_type`.
+
 Optional (defaults shown):
 - `QB_HOST=127.0.0.1`, `QB_PORT=8080`
 - `API_HOST=0.0.0.0`, `API_PORT=8000`
@@ -79,6 +82,62 @@ FastAPI REST API wrapping two external integrations: qBittorrent (torrent client
 **Torrent search uses qBittorrent's built-in search plugin system** (not a direct tracker API). Search is async-polled with a configurable timeout; hanging plugins are stopped explicitly.
 
 **OpenAPI:** Custom `openapi()` override in `main.py` sets `/health` security to `[]` (no auth required). All other routes inherit `APIKeyHeader` security scheme auto-generated from the `Security(APIKeyHeader)` dependency. Error response shapes declared via `responses=` on each route using `ErrorResponse` schema.
+
+## v1.1 spec (feat/v1.1-media-type-paths - implemented)
+
+### Goal
+
+Remove `save_path` from the download request. Caller passes `media_type` instead;
+torrent-downloader resolves the host-side save path from config and stores
+`hash -> (media_type, host_path)` in diskcache so the orchestrator can retrieve
+it at torrent completion time.
+
+### Why host path, not container path
+
+qBittorrent runs on the host machine, never inside this container. `save_path`
+passed to `torrents_add()` is consumed by qBittorrent's own filesystem, so it
+must always be a host-side path - even when torrent-downloader itself runs in
+Docker. torrent-downloader does not read or write the media directories itself,
+so there is no separate container-side path to track.
+
+### Changes
+
+**`core/config.py`** — single required field:
+- `media_host_path: str` — host-side base path (e.g. `F:\Media`), no default
+
+**`schemas/downloads.py`** — replaced `save_path: str` with `media_type: MediaType`
+(`MediaType = Literal["movie", "show"]`). `dry_run` stays.
+
+**`routers/transfers.py`** — `_resolve_host_path(media_type)` joins
+`config.media_host_path` with `MEDIA_TYPE_SUBDIRS[media_type]` (`{"movie": "Movies", "show": "Shows"}`)
+using a literal backslash join (host paths are Windows paths regardless of the
+container's OS). `POST /download` passes this to `torrents_add(save_path=...)`.
+After successful add, caches:
+```python
+app_cache.set(f"media_type:{torrent_hash}", {"media_type": payload.media_type, "host_path": host_path})
+```
+`torrent_hash` is extracted from the magnet URI (qBittorrent's `torrents_add()`
+does not return it directly) via `MAGNET_HASH_PATTERN` regex on
+`xt=urn:btih:([a-fA-F0-9]{40}|[a-zA-Z2-7]{32})`, normalised to lowercase.
+
+**`GET /api/v1/transfers/{hash}/info`** — orchestrator calls this after
+receiving the qBittorrent completion webhook. Returns:
+```json
+{ "media_type": "movie", "host_path": "F:\\Media\\Movies" }
+```
+Reads from diskcache (hash lookup is case-insensitive). Returns 404 with
+`TRANSFER_NOT_FOUND` if hash unknown (e.g. download predates v1.1 or cache evicted).
+
+**`core/errors.py`** — added `TRANSFER_NOT_FOUND`.
+
+**`.env.example`** — `MEDIA_HOST_PATH` with host-vs-container rationale.
+
+### Path returned to orchestrator
+
+`host_path` in the response is the media type's root dir (e.g. `F:\Media\Movies`),
+not the individual torrent's subfolder. The orchestrator appends the torrent name
+(`%N` from qBittorrent's completion script) to build the full item path for
+`POST /library/paths`.
 
 ## Versioning
 
