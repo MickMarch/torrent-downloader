@@ -1,20 +1,13 @@
-"""Schemas for active torrent transfer state returned by the /transfers endpoint."""
+"""Schemas for active torrent transfer state returned by the /transfers endpoint.
 
+TransferInfo and TransferHashInfo come from medialab-contracts; the response
+envelope below is this service's own.
+"""
+
+from medialab_contracts import TransferHashInfo, TransferInfo
 from pydantic import BaseModel
 
-
-class TransferInfo(BaseModel):
-    """Runtime state snapshot for a single qBittorrent torrent."""
-
-    name: str
-    size: int
-    progress: float
-    hash: str
-    state: str
-    download_speed: int
-    upload_speed: int
-    eta_seconds: int
-    save_path: str
+__all__ = ["TransferHashInfo", "TransferInfo", "TransferInfoResponse"]
 
 
 class TransferInfoResponse(BaseModel):
@@ -23,10 +16,3 @@ class TransferInfoResponse(BaseModel):
     status: str
     message: str
     data: list[TransferInfo]
-
-
-class TransferHashInfo(BaseModel):
-    """Cached media-type metadata for a single torrent, keyed by hash."""
-
-    media_type: str
-    host_path: str

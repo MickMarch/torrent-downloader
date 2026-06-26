@@ -37,5 +37,9 @@ jobs:
         # Audit the resolved project dependencies, not the isolated tool env.
         # CVE-2025-69872 (diskcache) has no fixed release yet; revisit when one ships.
         run: |
-          uv export --no-emit-project --format requirements-txt > requirements.audit.txt
-          uvx pip-audit -r requirements.audit.txt --ignore-vuln CVE-2025-69872
+          uv export --no-emit-project --no-emit-package medialab-contracts \
+            --format requirements-txt > requirements.audit.txt
+          # Drop VCS/local source lines pip-audit cannot hash; only third-party
+          # PyPI deps need a CVE audit (medialab-contracts is audited in its own CI).
+          grep -vE '@ git\+|^-e ' requirements.audit.txt > requirements.audit.pypi.txt
+          uvx pip-audit -r requirements.audit.pypi.txt --ignore-vuln CVE-2025-69872

@@ -5,6 +5,7 @@ import re
 import qbittorrentapi
 from fastapi import APIRouter, Request
 from fastapi import status as fastapi_status
+from medialab_contracts import MediaType
 from qbittorrentapi.exceptions import Conflict409Error
 
 from torrent_downloader.core.cache import app_cache
@@ -27,7 +28,7 @@ router = APIRouter(tags=[TAG_TRANSFERS])
 
 MAGNET_HASH_PATTERN = re.compile(r"xt=urn:btih:([a-fA-F0-9]{40}|[a-zA-Z2-7]{32})")
 MEDIA_TYPE_CACHE_PREFIX = "media_type:"
-MEDIA_TYPE_SUBDIRS = {"movie": "Movies", "show": "Shows"}
+MEDIA_TYPE_SUBDIRS = {MediaType.MOVIE: "Movies", MediaType.SHOW: "Shows"}
 
 
 _QB_ERROR_RESPONSES = {
@@ -43,7 +44,7 @@ def _extract_hash(magnet_uri: str) -> str | None:
     return match.group(1).lower() if match else None
 
 
-def _resolve_host_path(media_type: str) -> str:
+def _resolve_host_path(media_type: MediaType) -> str:
     """Builds the host-side save path qBittorrent runs on. The container never
     sees this path on disk - it exists only on the host filesystem."""
     if config.media_host_path is None:
@@ -101,7 +102,11 @@ def api_trigger_download(request: Request, payload: DownloadRequest) -> Download
     if torrent_hash:
         app_cache.set(
             f"{MEDIA_TYPE_CACHE_PREFIX}{torrent_hash}",
-            {"media_type": payload.media_type, "host_path": host_path},
+            {
+                "media_type": payload.media_type,
+                "host_path": host_path,
+                "tmdb_id": payload.tmdb_id,
+            },
         )
     else:
         app_logger.warning(
@@ -182,4 +187,5 @@ def api_get_transfer_info(request: Request, torrent_hash: str) -> TransferHashIn
     return TransferHashInfo(
         media_type=cached["media_type"],
         host_path=cached["host_path"],
+        tmdb_id=cached["tmdb_id"],
     )

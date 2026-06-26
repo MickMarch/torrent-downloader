@@ -1,21 +1,5 @@
-"""Shared error response schema for OpenAPI documentation."""
+"""Structured error response schema, re-exported from medialab-contracts."""
 
-from pydantic import BaseModel
+from medialab_contracts import ErrorResponse
 
-
-class ErrorResponse(BaseModel):
-    """Schema for all structured error responses."""
-
-    status: str
-    code: str
-    detail: str
-
-    model_config = {
-        "json_schema_extra": {
-            "example": {
-                "status": "error",
-                "code": "UNAUTHORIZED",
-                "detail": "Missing API key.",
-            }
-        }
-    }
+__all__ = ["ErrorResponse"]

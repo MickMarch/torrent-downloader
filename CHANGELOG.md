@@ -9,6 +9,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- `tmdb_id` (required) on `POST /download`, cached against the torrent hash and
+  returned by `GET /transfers/{hash}/info`, so the orchestrator can resolve
+  canonical TMDB metadata at completion time.
 - Ruff lint + format configuration (`pyproject.toml`), enforcing the workspace
   rule set (`E,F,I,UP,B,SIM,PLR2004`) including the magic-value ban (`PLR2004`).
 - Mypy static type checking with the pydantic plugin.
@@ -21,6 +24,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- Consume shared models from `medialab-contracts` v0.2.0: `MediaType` (now the
+  shared enum, replacing the local `Literal`), `ErrorResponse`, `TransferInfo`,
+  and `TransferHashInfo`. `ErrorCode` now sources its shared members from
+  `CommonErrorCode`, keeping only the service-specific codes local.
 - Bumped `starlette` (>=1.3.1), `pydantic-settings` (>=2.14.2), and `idna`
   (>=3.15) to resolve known CVEs surfaced by the new dependency audit.
   `starlette` 1.3 deprecates using `httpx` with its `TestClient`; migrating

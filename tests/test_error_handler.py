@@ -101,7 +101,7 @@ class TestRouterErrorCodes:
         mocker.patch("torrent_downloader.routers.transfers.get_torrent_client", return_value=None)
         body = client.post(
             "/api/v1/download",
-            json={"magnet_uri": "magnet:?xt=urn:btih:abc", "media_type": "movie"},
+            json={"magnet_uri": "magnet:?xt=urn:btih:abc", "media_type": "movie", "tmdb_id": 27205},
         ).json()
         assert body["code"] == ErrorCode.QB_UNAVAILABLE.value
 
@@ -115,7 +115,7 @@ class TestRouterErrorCodes:
         mocker.patch("torrent_downloader.routers.transfers.is_vpn_bound", return_value=False)
         body = client.post(
             "/api/v1/download",
-            json={"magnet_uri": "magnet:?xt=urn:btih:abc", "media_type": "movie"},
+            json={"magnet_uri": "magnet:?xt=urn:btih:abc", "media_type": "movie", "tmdb_id": 27205},
         ).json()
         assert body["code"] == ErrorCode.VPN_NOT_BOUND.value
 
