@@ -13,8 +13,8 @@ from torrent_downloader.core.constants import TAG_TRANSFERS
 from torrent_downloader.core.errors import AppException, ErrorCode
 from torrent_downloader.core.limiter import RATE_LIMIT_DEFAULT, limiter
 from torrent_downloader.core.logger import app_logger
-from torrent_downloader.schemas.errors import ErrorResponse
 from torrent_downloader.schemas.downloads import DownloadRequest, DownloadResponse
+from torrent_downloader.schemas.errors import ErrorResponse
 from torrent_downloader.schemas.transfers import TransferHashInfo, TransferInfoResponse
 from torrent_downloader.services.qbittorrent import (
     get_active_transfers,
@@ -46,6 +46,12 @@ def _extract_hash(magnet_uri: str) -> str | None:
 def _resolve_host_path(media_type: str) -> str:
     """Builds the host-side save path qBittorrent runs on. The container never
     sees this path on disk - it exists only on the host filesystem."""
+    if config.media_host_path is None:
+        raise AppException(
+            status_code=fastapi_status.HTTP_500_INTERNAL_SERVER_ERROR,
+            code=ErrorCode.INTERNAL_ERROR,
+            detail="MEDIA_HOST_PATH is not configured.",
+        )
     base = config.media_host_path.rstrip("\\/")
     return f"{base}\\{MEDIA_TYPE_SUBDIRS[media_type]}"
 
@@ -127,9 +133,7 @@ def api_get_transfers(request: Request) -> TransferInfoResponse:
             detail="qBittorrent client unavailable.",
         )
 
-    return TransferInfoResponse(
-        status="success", message="", data=get_active_transfers(client)
-    )
+    return TransferInfoResponse(status="success", message="", data=get_active_transfers(client))
 
 
 @router.post(

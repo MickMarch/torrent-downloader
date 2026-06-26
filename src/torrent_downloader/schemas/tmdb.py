@@ -1,6 +1,6 @@
 """Schemas for TMDB search results returned to the client."""
 
-from typing import Any, Dict, List, Optional
+from typing import Any
 
 from pydantic import BaseModel
 
@@ -14,7 +14,7 @@ class TmdbSearchResult(BaseModel):
     media_type: str
     overview: str
     vote_average: float
-    poster_path: Optional[str]
+    poster_path: str | None
 
 
 class TmdbSearchResponse(BaseModel):
@@ -22,7 +22,7 @@ class TmdbSearchResponse(BaseModel):
 
     status: str
     message: str
-    data: List[TmdbSearchResult]
+    data: list[TmdbSearchResult]
 
 
 class TmdbMediaDetailResponse(BaseModel):
@@ -30,4 +30,4 @@ class TmdbMediaDetailResponse(BaseModel):
 
     status: str
     message: str
-    data: Optional[Dict[str, Any]]
+    data: dict[str, Any] | None

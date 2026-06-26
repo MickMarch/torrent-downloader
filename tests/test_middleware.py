@@ -1,6 +1,5 @@
 """Tests for request logging middleware."""
 
-import pytest
 from fastapi.testclient import TestClient
 from pytest_mock import MockerFixture
 
@@ -13,6 +12,7 @@ class TestRequestIdHeader:
 
     def test_request_id_is_valid_uuid(self, client: TestClient, mocker: MockerFixture) -> None:
         import uuid
+
         mocker.patch("torrent_downloader.routers.system.get_torrent_client", return_value=None)
         response = client.get("/api/v1/health")
         request_id = response.headers["x-request-id"]
@@ -24,7 +24,9 @@ class TestRequestIdHeader:
         r2 = client.get("/api/v1/health")
         assert r1.headers["x-request-id"] != r2.headers["x-request-id"]
 
-    def test_error_response_includes_request_id(self, client: TestClient, mocker: MockerFixture) -> None:
+    def test_error_response_includes_request_id(
+        self, client: TestClient, mocker: MockerFixture
+    ) -> None:
         mocker.patch(
             "torrent_downloader.routers.system.get_disk_usage",
             side_effect=FileNotFoundError,
@@ -34,7 +36,9 @@ class TestRequestIdHeader:
 
 
 class TestRequestLogging:
-    def test_logs_method_path_status_duration(self, client: TestClient, mocker: MockerFixture) -> None:
+    def test_logs_method_path_status_duration(
+        self, client: TestClient, mocker: MockerFixture
+    ) -> None:
         mock_log = mocker.patch("torrent_downloader.core.middleware.app_logger")
         mocker.patch("torrent_downloader.routers.system.get_torrent_client", return_value=None)
         client.get("/api/v1/health")
@@ -50,7 +54,12 @@ class TestRequestLogging:
         mock_log = mocker.patch("torrent_downloader.core.middleware.app_logger")
         mocker.patch(
             "torrent_downloader.routers.system.get_disk_usage",
-            return_value={"total_gb": 100.0, "used_gb": 50.0, "free_gb": 50.0, "used_percent": 50.0},
+            return_value={
+                "total_gb": 100.0,
+                "used_gb": 50.0,
+                "free_gb": 50.0,
+                "used_percent": 50.0,
+            },
         )
         client.get("/api/v1/storage?path=/tmp")
         args = mock_log.info.call_args[0]
@@ -61,7 +70,12 @@ class TestRequestLogging:
         mock_log = mocker.patch("torrent_downloader.core.middleware.app_logger")
         mocker.patch(
             "torrent_downloader.routers.system.get_disk_usage",
-            return_value={"total_gb": 100.0, "used_gb": 50.0, "free_gb": 50.0, "used_percent": 50.0},
+            return_value={
+                "total_gb": 100.0,
+                "used_gb": 50.0,
+                "free_gb": 50.0,
+                "used_percent": 50.0,
+            },
         )
         client.get("/api/v1/storage?path=/tmp")
         mock_log.info.assert_called_once()

@@ -1,15 +1,15 @@
 """Search router: TMDB metadata lookup and qBittorrent plugin torrent search."""
 
-from typing import Any, Dict, List
+from typing import Any
 
 import qbittorrentapi
 from fastapi import APIRouter, Request
 from fastapi import status as fastapi_status
 
 from torrent_downloader.core.constants import TAG_SEARCH
+from torrent_downloader.core.errors import AppException, ErrorCode
 from torrent_downloader.core.limiter import RATE_LIMIT_SEARCH, limiter
 from torrent_downloader.schemas.errors import ErrorResponse
-from torrent_downloader.core.errors import AppException, ErrorCode
 from torrent_downloader.schemas.tmdb import (
     TmdbMediaDetailResponse,
     TmdbSearchResponse,
@@ -51,8 +51,8 @@ _SEARCH_ERROR_RESPONSES = {
 @limiter.limit(RATE_LIMIT_SEARCH)
 def api_search_tmdb(request: Request, query: str) -> TmdbSearchResponse:
     """Query TMDB for movies and TV shows matching the search string."""
-    raw_results: List[Dict[str, Any]] = search_tmdb_multi(query)
-    formatted_results: List[TmdbSearchResult] = [
+    raw_results: list[dict[str, Any]] = search_tmdb_multi(query)
+    formatted_results: list[TmdbSearchResult] = [
         TmdbSearchResult(
             tmdb_id=item["id"],
             title=extract_title(item),
@@ -88,9 +88,9 @@ def api_search_torrents(request: Request, query: str) -> TorrentSearchResponse:
             detail="qBittorrent client unavailable.",
         )
 
-    raw_results: List[Dict[str, Any]] = search_torrents(client, query)
-    processed_results: List[Dict[str, Any]] = filter_and_sort_results(raw_results)
-    grouped: Dict[str, List[TorrentResult]] = {
+    raw_results: list[dict[str, Any]] = search_torrents(client, query)
+    processed_results: list[dict[str, Any]] = filter_and_sort_results(raw_results)
+    grouped: dict[str, list[TorrentResult]] = {
         resolution: [TorrentResult(**item) for item in items]
         for resolution, items in group_by_resolution(processed_results).items()
     }
@@ -108,7 +108,7 @@ def api_search_torrents(request: Request, query: str) -> TorrentSearchResponse:
 @limiter.limit(RATE_LIMIT_SEARCH)
 def api_get_movie_details(request: Request, movie_id: int) -> TmdbMediaDetailResponse:
     """Fetch detailed movie metadata from TMDB by movie ID."""
-    raw: Dict[str, Any] = get_movie_details(movie_id)
+    raw: dict[str, Any] = get_movie_details(movie_id)
     if not raw:
         return TmdbMediaDetailResponse(status="error", message="Movie not found.", data=None)
     return TmdbMediaDetailResponse(status="success", message="", data=raw)
@@ -124,7 +124,7 @@ def api_get_movie_details(request: Request, movie_id: int) -> TmdbMediaDetailRes
 @limiter.limit(RATE_LIMIT_SEARCH)
 def api_get_tv_details(request: Request, series_id: int) -> TmdbMediaDetailResponse:
     """Fetch detailed TV series metadata from TMDB by series ID."""
-    raw: Dict[str, Any] = get_tv_details(series_id)
+    raw: dict[str, Any] = get_tv_details(series_id)
     if not raw:
         return TmdbMediaDetailResponse(status="error", message="TV series not found.", data=None)
     return TmdbMediaDetailResponse(status="success", message="", data=raw)

@@ -7,7 +7,7 @@ from pydantic_settings import BaseSettings, SettingsConfigDict
 class AppConfig(BaseSettings):
     """Application configuration parameters."""
 
-    model_config: SettingsConfigDict = SettingsConfigDict(env_file=".env")
+    model_config = SettingsConfigDict(env_file=".env")
 
     qb_host: str = Field(default="127.0.0.1")
     qb_port: int = Field(default=8080)

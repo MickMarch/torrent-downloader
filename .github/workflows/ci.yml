@@ -9,7 +9,7 @@ on:
       - main
 
 jobs:
-  test:
+  quality:
     runs-on: ubuntu-latest
 
     steps:
@@ -21,5 +21,21 @@ jobs:
       - name: Install dependencies
         run: uv sync --dev
 
-      - name: Run tests
+      - name: Ruff lint
+        run: uv run ruff check .
+
+      - name: Ruff format check
+        run: uv run ruff format --check .
+
+      - name: Mypy
+        run: uv run mypy src
+
+      - name: Tests
         run: uv run pytest
+
+      - name: Dependency audit
+        # Audit the resolved project dependencies, not the isolated tool env.
+        # CVE-2025-69872 (diskcache) has no fixed release yet; revisit when one ships.
+        run: |
+          uv export --no-emit-project --format requirements-txt > requirements.audit.txt
+          uvx pip-audit -r requirements.audit.txt --ignore-vuln CVE-2025-69872
