@@ -1,39 +1,23 @@
 """Tests for ErrorCode enum and AppException pure logic."""
 
+from medialab_contracts import CommonErrorCode
+
 from torrent_downloader.core.errors import AppException, ErrorCode
 
 
 class TestErrorCode:
-    def test_has_qb_unavailable(self) -> None:
+    def test_has_service_specific_codes(self) -> None:
+        # Shared codes are asserted via the superset test below; here we only
+        # check this service's own codes exist.
         assert ErrorCode.QB_UNAVAILABLE
-
-    def test_has_vpn_not_bound(self) -> None:
         assert ErrorCode.VPN_NOT_BOUND
-
-    def test_has_path_not_found(self) -> None:
-        assert ErrorCode.PATH_NOT_FOUND
-
-    def test_has_permission_denied(self) -> None:
-        assert ErrorCode.PERMISSION_DENIED
-
-    def test_has_invalid_input(self) -> None:
-        assert ErrorCode.INVALID_INPUT
-
-    def test_has_internal_error(self) -> None:
-        assert ErrorCode.INTERNAL_ERROR
-
-    def test_has_unauthorized(self) -> None:
-        assert ErrorCode.UNAUTHORIZED
-
-    def test_has_rate_limited(self) -> None:
-        assert ErrorCode.RATE_LIMITED
-
-    def test_has_transfer_not_found(self) -> None:
         assert ErrorCode.TRANSFER_NOT_FOUND
 
-    def test_values_are_strings(self) -> None:
-        for code in ErrorCode:
-            assert isinstance(code.value, str)
+    def test_is_superset_of_common_error_code(self) -> None:
+        # Every shared code must be present with the same value, sourced from
+        # CommonErrorCode so a rename in contracts surfaces here.
+        for common in CommonErrorCode:
+            assert ErrorCode[common.name].value == common.value
 
 
 class TestAppException:
