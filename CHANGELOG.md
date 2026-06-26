@@ -5,6 +5,33 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Added
+
+- Ruff lint + format configuration (`pyproject.toml`), enforcing the workspace
+  rule set (`E,F,I,UP,B,SIM,PLR2004`) including the magic-value ban (`PLR2004`).
+- Mypy static type checking with the pydantic plugin.
+- Pre-commit hooks (ruff, whitespace, eof, yaml/toml checks).
+- Dependabot config for `uv` and GitHub Actions updates.
+- CI now runs lint, format check, mypy, tests, and a dependency audit
+  (previously tests only).
+- `integration` pytest marker for tests that need real secrets or a live
+  service (skipped in CI).
+
+### Changed
+
+- Bumped `starlette` (>=1.3.1), `pydantic-settings` (>=2.14.2), and `idna`
+  (>=3.15) to resolve known CVEs surfaced by the new dependency audit.
+  `starlette` 1.3 deprecates using `httpx` with its `TestClient`; migrating
+  the test client to `httpx2` is tracked as a follow-up.
+
+### Fixed
+
+- `_resolve_host_path` now raises a clear configuration error when
+  `MEDIA_HOST_PATH` is unset, instead of an opaque `AttributeError`.
+- Disk-usage error handlers chain the original exception (`raise ... from err`).
+
 ## [1.0.2] - 2026-06-05
 
 ### Changed

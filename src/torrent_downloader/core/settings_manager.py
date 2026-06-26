@@ -1,14 +1,14 @@
 """Runtime helpers for persisting configuration changes back to the .env file."""
 
 import os
-from typing import Any, Dict
+from typing import Any
 
 from dotenv import set_key
 
 from torrent_downloader.core.config import config
 
 
-def update_environment_variables(updates: Dict[str, Any]) -> None:
+def update_environment_variables(updates: dict[str, Any]) -> None:
     """Writes configuration modifications to the configured environment file."""
     env_file_path: str = str(config.model_config.get("env_file", ".env"))
 

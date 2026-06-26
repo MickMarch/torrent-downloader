@@ -1,23 +1,22 @@
 """Tests for qBittorrent pure logic: filtering, sorting, and resolution grouping."""
 
-from typing import Any, Dict, List
-
-import pytest
+from typing import Any
 
 from torrent_downloader.services.qbittorrent import filter_and_sort_results, group_by_resolution
-
 
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
 
-def make_result(name: str, seeders: int, url: str = "magnet:?xt=urn:btih:abc") -> Dict[str, Any]:
+
+def make_result(name: str, seeders: int, url: str = "magnet:?xt=urn:btih:abc") -> dict[str, Any]:
     return {"fileName": name, "nbSeeders": seeders, "fileUrl": url}
 
 
 # ---------------------------------------------------------------------------
 # filter_and_sort_results
 # ---------------------------------------------------------------------------
+
 
 class TestFilterAndSortResults:
     def test_removes_results_below_minimum_seeders(self) -> None:
@@ -60,6 +59,7 @@ class TestFilterAndSortResults:
 # ---------------------------------------------------------------------------
 # group_by_resolution
 # ---------------------------------------------------------------------------
+
 
 class TestGroupByResolution:
     def test_groups_4k_resolutions(self) -> None:

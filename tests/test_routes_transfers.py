@@ -25,31 +25,48 @@ def clear_cache():
 
 
 class TestDownloadResolvesHostPath:
-    def test_movie_media_type_appends_movies_subdir(self, client: TestClient, mocker: MockerFixture) -> None:
+    def test_movie_media_type_appends_movies_subdir(
+        self, client: TestClient, mocker: MockerFixture
+    ) -> None:
         mock_client = mocker.MagicMock()
-        mocker.patch("torrent_downloader.routers.transfers.get_torrent_client", return_value=mock_client)
+        mocker.patch(
+            "torrent_downloader.routers.transfers.get_torrent_client", return_value=mock_client
+        )
         mocker.patch("torrent_downloader.routers.transfers.is_vpn_bound", return_value=True)
 
         client.post("/api/v1/download", json={"magnet_uri": MOVIE_MAGNET, "media_type": "movie"})
 
-        mock_client.torrents_add.assert_called_once_with(urls=MOVIE_MAGNET, save_path="F:\\Media\\Movies")
+        mock_client.torrents_add.assert_called_once_with(
+            urls=MOVIE_MAGNET, save_path="F:\\Media\\Movies"
+        )
 
-    def test_show_media_type_appends_shows_subdir(self, client: TestClient, mocker: MockerFixture) -> None:
+    def test_show_media_type_appends_shows_subdir(
+        self, client: TestClient, mocker: MockerFixture
+    ) -> None:
         mock_client = mocker.MagicMock()
-        mocker.patch("torrent_downloader.routers.transfers.get_torrent_client", return_value=mock_client)
+        mocker.patch(
+            "torrent_downloader.routers.transfers.get_torrent_client", return_value=mock_client
+        )
         mocker.patch("torrent_downloader.routers.transfers.is_vpn_bound", return_value=True)
 
         client.post("/api/v1/download", json={"magnet_uri": SHOW_MAGNET, "media_type": "show"})
 
-        mock_client.torrents_add.assert_called_once_with(urls=SHOW_MAGNET, save_path="F:\\Media\\Shows")
+        mock_client.torrents_add.assert_called_once_with(
+            urls=SHOW_MAGNET, save_path="F:\\Media\\Shows"
+        )
 
-    def test_dry_run_does_not_call_torrents_add(self, client: TestClient, mocker: MockerFixture) -> None:
+    def test_dry_run_does_not_call_torrents_add(
+        self, client: TestClient, mocker: MockerFixture
+    ) -> None:
         mock_client = mocker.MagicMock()
-        mocker.patch("torrent_downloader.routers.transfers.get_torrent_client", return_value=mock_client)
+        mocker.patch(
+            "torrent_downloader.routers.transfers.get_torrent_client", return_value=mock_client
+        )
         mocker.patch("torrent_downloader.routers.transfers.is_vpn_bound", return_value=True)
 
         response = client.post(
-            "/api/v1/download", json={"magnet_uri": MOVIE_MAGNET, "media_type": "movie", "dry_run": True}
+            "/api/v1/download",
+            json={"magnet_uri": MOVIE_MAGNET, "media_type": "movie", "dry_run": True},
         )
 
         mock_client.torrents_add.assert_not_called()
@@ -61,7 +78,9 @@ class TestDownloadCachesHashMetadata:
         self, client: TestClient, mocker: MockerFixture
     ) -> None:
         mock_client = mocker.MagicMock()
-        mocker.patch("torrent_downloader.routers.transfers.get_torrent_client", return_value=mock_client)
+        mocker.patch(
+            "torrent_downloader.routers.transfers.get_torrent_client", return_value=mock_client
+        )
         mocker.patch("torrent_downloader.routers.transfers.is_vpn_bound", return_value=True)
 
         client.post("/api/v1/download", json={"magnet_uri": MOVIE_MAGNET, "media_type": "movie"})
@@ -71,9 +90,13 @@ class TestDownloadCachesHashMetadata:
         cached = app_cache.get("media_type:1234567890abcdef1234567890abcdef12345678")
         assert cached == {"media_type": "movie", "host_path": "F:\\Media\\Movies"}
 
-    def test_hash_extracted_and_normalised_to_lowercase(self, client: TestClient, mocker: MockerFixture) -> None:
+    def test_hash_extracted_and_normalised_to_lowercase(
+        self, client: TestClient, mocker: MockerFixture
+    ) -> None:
         mock_client = mocker.MagicMock()
-        mocker.patch("torrent_downloader.routers.transfers.get_torrent_client", return_value=mock_client)
+        mocker.patch(
+            "torrent_downloader.routers.transfers.get_torrent_client", return_value=mock_client
+        )
         mocker.patch("torrent_downloader.routers.transfers.is_vpn_bound", return_value=True)
 
         client.post("/api/v1/download", json={"magnet_uri": SHOW_MAGNET, "media_type": "show"})
@@ -87,7 +110,9 @@ class TestDownloadCachesHashMetadata:
         self, client: TestClient, mocker: MockerFixture
     ) -> None:
         mock_client = mocker.MagicMock()
-        mocker.patch("torrent_downloader.routers.transfers.get_torrent_client", return_value=mock_client)
+        mocker.patch(
+            "torrent_downloader.routers.transfers.get_torrent_client", return_value=mock_client
+        )
         mocker.patch("torrent_downloader.routers.transfers.is_vpn_bound", return_value=True)
         mock_logger = mocker.patch("torrent_downloader.routers.transfers.app_logger")
 
@@ -99,11 +124,14 @@ class TestDownloadCachesHashMetadata:
 
     def test_dry_run_does_not_cache(self, client: TestClient, mocker: MockerFixture) -> None:
         mock_client = mocker.MagicMock()
-        mocker.patch("torrent_downloader.routers.transfers.get_torrent_client", return_value=mock_client)
+        mocker.patch(
+            "torrent_downloader.routers.transfers.get_torrent_client", return_value=mock_client
+        )
         mocker.patch("torrent_downloader.routers.transfers.is_vpn_bound", return_value=True)
 
         client.post(
-            "/api/v1/download", json={"magnet_uri": MOVIE_MAGNET, "media_type": "movie", "dry_run": True}
+            "/api/v1/download",
+            json={"magnet_uri": MOVIE_MAGNET, "media_type": "movie", "dry_run": True},
         )
 
         from torrent_downloader.core.cache import app_cache
@@ -115,7 +143,9 @@ class TestTransferInfoEndpoint:
     def test_returns_cached_metadata_for_known_hash(self, client: TestClient) -> None:
         from torrent_downloader.core.cache import app_cache
 
-        app_cache.set("media_type:abc123", {"media_type": "movie", "host_path": "F:\\Media\\Movies"})
+        app_cache.set(
+            "media_type:abc123", {"media_type": "movie", "host_path": "F:\\Media\\Movies"}
+        )
 
         response = client.get("/api/v1/transfers/abc123/info")
 

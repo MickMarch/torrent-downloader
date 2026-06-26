@@ -8,9 +8,9 @@ from fastapi import status as fastapi_status
 
 from torrent_downloader.core.auth import verify_api_key
 from torrent_downloader.core.cache import app_cache
-from torrent_downloader.core.limiter import RATE_LIMIT_DEFAULT, limiter
 from torrent_downloader.core.constants import API_START_TIME, TAG_SYSTEM
 from torrent_downloader.core.errors import AppException, ErrorCode
+from torrent_downloader.core.limiter import RATE_LIMIT_DEFAULT, limiter
 from torrent_downloader.core.logger import app_logger
 from torrent_downloader.schemas.errors import ErrorResponse
 from torrent_downloader.schemas.system import CacheClearResponse, DiskUsageResponse, HealthResponse
@@ -50,7 +50,10 @@ def api_health_check() -> HealthResponse:
     summary="Returns disk usage for the given save path.",
     dependencies=[Depends(verify_api_key)],
     responses={
-        403: {"model": ErrorResponse, "description": "Missing/invalid API key or permission denied on path."},
+        403: {
+            "model": ErrorResponse,
+            "description": "Missing/invalid API key or permission denied on path.",
+        },
         404: {"model": ErrorResponse, "description": "Path not found."},
         422: {"model": ErrorResponse, "description": "Missing or invalid query parameter."},
         429: {"model": ErrorResponse, "description": "Rate limit exceeded."},
@@ -62,24 +65,24 @@ def get_storage_info(request: Request, path: str) -> DiskUsageResponse:
     """Return total, used, and free disk space for the specified save path."""
     try:
         usage = get_disk_usage(path)
-    except FileNotFoundError:
+    except FileNotFoundError as err:
         raise AppException(
             status_code=fastapi_status.HTTP_404_NOT_FOUND,
             code=ErrorCode.PATH_NOT_FOUND,
             detail=f"Path not found: {path}",
-        )
-    except PermissionError:
+        ) from err
+    except PermissionError as err:
         raise AppException(
             status_code=fastapi_status.HTTP_403_FORBIDDEN,
             code=ErrorCode.PERMISSION_DENIED,
             detail=f"Permission denied: {path}",
-        )
-    except OSError:
+        ) from err
+    except OSError as err:
         raise AppException(
             status_code=fastapi_status.HTTP_500_INTERNAL_SERVER_ERROR,
             code=ErrorCode.INTERNAL_ERROR,
             detail="Disk usage check failed.",
-        )
+        ) from err
     return DiskUsageResponse(status="success", path=path, **usage)
 
 

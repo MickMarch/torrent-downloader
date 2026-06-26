@@ -24,17 +24,27 @@ class TestHealthRoute:
         mocker.patch("torrent_downloader.routers.system.get_torrent_client", return_value=None)
         assert client.get("/api/v1/health").json()["uptime_seconds"] >= 0
 
-    def test_vpn_bound_false_when_client_unavailable(self, client: TestClient, mocker: MockerFixture) -> None:
+    def test_vpn_bound_false_when_client_unavailable(
+        self, client: TestClient, mocker: MockerFixture
+    ) -> None:
         mocker.patch("torrent_downloader.routers.system.get_torrent_client", return_value=None)
         assert client.get("/api/v1/health").json()["vpn_interface_bound"] is False
 
-    def test_vpn_bound_true_when_interface_matches(self, client: TestClient, mocker: MockerFixture) -> None:
-        mocker.patch("torrent_downloader.routers.system.get_torrent_client", return_value=mocker.MagicMock())
+    def test_vpn_bound_true_when_interface_matches(
+        self, client: TestClient, mocker: MockerFixture
+    ) -> None:
+        mocker.patch(
+            "torrent_downloader.routers.system.get_torrent_client", return_value=mocker.MagicMock()
+        )
         mocker.patch("torrent_downloader.routers.system.is_vpn_bound", return_value=True)
         assert client.get("/api/v1/health").json()["vpn_interface_bound"] is True
 
-    def test_vpn_bound_false_when_interface_wrong(self, client: TestClient, mocker: MockerFixture) -> None:
-        mocker.patch("torrent_downloader.routers.system.get_torrent_client", return_value=mocker.MagicMock())
+    def test_vpn_bound_false_when_interface_wrong(
+        self, client: TestClient, mocker: MockerFixture
+    ) -> None:
+        mocker.patch(
+            "torrent_downloader.routers.system.get_torrent_client", return_value=mocker.MagicMock()
+        )
         mocker.patch("torrent_downloader.routers.system.is_vpn_bound", return_value=False)
         assert client.get("/api/v1/health").json()["vpn_interface_bound"] is False
 
@@ -55,7 +65,9 @@ class TestCacheClearRoute:
 
 
 class TestStorageRoute:
-    def _mock_disk_usage(self, mocker: MockerFixture, total_gb: float = 500.0, used_gb: float = 200.0) -> None:
+    def _mock_disk_usage(
+        self, mocker: MockerFixture, total_gb: float = 500.0, used_gb: float = 200.0
+    ) -> None:
         free_gb = total_gb - used_gb
         mocker.patch(
             "torrent_downloader.routers.system.get_disk_usage",
@@ -92,7 +104,9 @@ class TestStorageRoute:
         )
         assert client.get("/api/v1/storage?path=/invalid/path").status_code == 404
 
-    def test_returns_403_on_permission_error(self, client: TestClient, mocker: MockerFixture) -> None:
+    def test_returns_403_on_permission_error(
+        self, client: TestClient, mocker: MockerFixture
+    ) -> None:
         mocker.patch(
             "torrent_downloader.routers.system.get_disk_usage",
             side_effect=PermissionError("Permission denied"),

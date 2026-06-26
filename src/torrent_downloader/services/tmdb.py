@@ -1,6 +1,6 @@
 """TMDB API client functions for multi-search queries and result normalisation."""
 
-from typing import Any, Dict, List
+from typing import Any
 
 import requests
 
@@ -16,12 +16,12 @@ VALID_MEDIA_TYPES: set[str] = {"movie", "tv"}
 
 
 @app_cache.memoize(expire=config.cache_expiration_seconds)
-def search_tmdb_multi(query: str) -> List[Dict[str, Any]]:
+def search_tmdb_multi(query: str) -> list[dict[str, Any]]:
     """Queries TMDB for matching media and caches the response."""
     if not config.tmdb_api_key:
         return []
 
-    params: Dict[str, str] = {
+    params: dict[str, str] = {
         "api_key": config.tmdb_api_key,
         "query": query,
         "language": config.target_language,
@@ -30,40 +30,38 @@ def search_tmdb_multi(query: str) -> List[Dict[str, Any]]:
     response: requests.Response = requests.get(TMDB_SEARCH_URL, params=params)
 
     if response.status_code == HTTP_STATUS_OK:
-        data: Dict[str, Any] = response.json()
-        results: List[Dict[str, Any]] = data.get("results", [])
+        data: dict[str, Any] = response.json()
+        results: list[dict[str, Any]] = data.get("results", [])
         return [item for item in results if item.get("media_type") in VALID_MEDIA_TYPES]
 
     return []
 
 
-def extract_year(tmdb_item: Dict[str, Any]) -> str:
+def extract_year(tmdb_item: dict[str, Any]) -> str:
     """Extracts the initial release year from a TMDB payload."""
-    date_str: str = tmdb_item.get("release_date", "") or tmdb_item.get(
-        "first_air_date", ""
-    )
+    date_str: str = tmdb_item.get("release_date", "") or tmdb_item.get("first_air_date", "")
     if date_str:
         return date_str.split("-")[0]
     return ""
 
 
-def extract_title(tmdb_item: Dict[str, Any]) -> str:
+def extract_title(tmdb_item: dict[str, Any]) -> str:
     """Extracts the primary title from a TMDB payload."""
     return tmdb_item.get("title", "") or tmdb_item.get("name", "")
 
 
-def extract_media_type(tmdb_item: Dict[str, Any]) -> str:
+def extract_media_type(tmdb_item: dict[str, Any]) -> str:
     """Extracts the media type from a TMDB payload."""
     return tmdb_item.get("media_type", "")
 
 
 @app_cache.memoize(expire=config.cache_expiration_seconds)
-def get_movie_details(movie_id: int) -> Dict[str, Any]:
+def get_movie_details(movie_id: int) -> dict[str, Any]:
     """Fetches full movie details from TMDB by movie ID."""
     if not config.tmdb_api_key:
         return {}
 
-    params: Dict[str, str] = {
+    params: dict[str, str] = {
         "api_key": config.tmdb_api_key,
         "language": config.target_language,
     }
@@ -77,12 +75,12 @@ def get_movie_details(movie_id: int) -> Dict[str, Any]:
 
 
 @app_cache.memoize(expire=config.cache_expiration_seconds)
-def get_tv_details(series_id: int) -> Dict[str, Any]:
+def get_tv_details(series_id: int) -> dict[str, Any]:
     """Fetches full TV series details from TMDB by series ID."""
     if not config.tmdb_api_key:
         return {}
 
-    params: Dict[str, str] = {
+    params: dict[str, str] = {
         "api_key": config.tmdb_api_key,
         "language": config.target_language,
     }

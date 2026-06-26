@@ -2,10 +2,10 @@
 
 from torrent_downloader.services.tmdb import extract_media_type, extract_title, extract_year
 
-
 # ---------------------------------------------------------------------------
 # extract_title
 # ---------------------------------------------------------------------------
+
 
 class TestExtractTitle:
     def test_returns_title_for_movie(self) -> None:
@@ -28,6 +28,7 @@ class TestExtractTitle:
 # extract_year
 # ---------------------------------------------------------------------------
 
+
 class TestExtractYear:
     def test_extracts_year_from_release_date(self) -> None:
         assert extract_year({"release_date": "2010-07-16"}) == "2010"
@@ -36,7 +37,9 @@ class TestExtractYear:
         assert extract_year({"first_air_date": "2008-01-20"}) == "2008"
 
     def test_prefers_release_date_over_first_air_date(self) -> None:
-        assert extract_year({"release_date": "2010-07-16", "first_air_date": "2008-01-20"}) == "2010"
+        assert (
+            extract_year({"release_date": "2010-07-16", "first_air_date": "2008-01-20"}) == "2010"
+        )
 
     def test_falls_back_to_first_air_date_when_release_date_empty(self) -> None:
         assert extract_year({"release_date": "", "first_air_date": "2008-01-20"}) == "2008"
@@ -54,6 +57,7 @@ class TestExtractYear:
 # ---------------------------------------------------------------------------
 # extract_media_type
 # ---------------------------------------------------------------------------
+
 
 class TestExtractMediaType:
     def test_returns_movie(self) -> None:

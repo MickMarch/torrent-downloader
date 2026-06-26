@@ -1,7 +1,5 @@
 """Schemas for torrent search results returned by the qBittorrent plugin search."""
 
-from typing import List
-
 from pydantic import BaseModel
 
 
@@ -22,4 +20,4 @@ class TorrentSearchResponse(BaseModel):
 
     status: str
     message: str
-    data: dict[str, List[TorrentResult]]
+    data: dict[str, list[TorrentResult]]

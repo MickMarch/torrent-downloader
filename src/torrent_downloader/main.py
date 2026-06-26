@@ -1,6 +1,7 @@
 """Application entry point: FastAPI app factory and uvicorn launch helpers."""
 
 import importlib.metadata
+
 import uvicorn
 from fastapi import Depends, FastAPI, Request
 from fastapi.exceptions import RequestValidationError
@@ -39,7 +40,9 @@ app.state.limiter = limiter
 
 @app.exception_handler(RateLimitExceeded)
 async def rate_limit_exceeded_handler(request: Request, exc: RateLimitExceeded) -> JSONResponse:
-    retry_after: int = exc.limit.limit.GRANULARITY.seconds
+    # slowapi populates exc.limit before invoking this handler; the Optional is
+    # a framework typing artifact, not reachable as None here.
+    retry_after: int = exc.limit.limit.GRANULARITY.seconds  # type: ignore[union-attr]
     response = JSONResponse(
         status_code=429,
         content={
@@ -50,6 +53,7 @@ async def rate_limit_exceeded_handler(request: Request, exc: RateLimitExceeded) 
     )
     response.headers["Retry-After"] = str(retry_after)
     return response
+
 
 app.add_middleware(RequestLoggingMiddleware)
 app.add_middleware(
@@ -70,11 +74,14 @@ async def app_exception_handler(request: Request, exc: AppException) -> JSONResp
 
 
 @app.exception_handler(RequestValidationError)
-async def validation_exception_handler(request: Request, exc: RequestValidationError) -> JSONResponse:
+async def validation_exception_handler(
+    request: Request, exc: RequestValidationError
+) -> JSONResponse:
     return JSONResponse(
         status_code=422,
         content={"status": "error", "code": ErrorCode.INVALID_INPUT.value, "detail": str(exc)},
     )
+
 
 app.include_router(system.router, prefix="/api/v1")
 app.include_router(search.router, prefix="/api/v1", dependencies=[Depends(verify_api_key)])
@@ -85,6 +92,7 @@ def custom_openapi() -> dict:
     if app.openapi_schema:
         return app.openapi_schema
     from fastapi.openapi.utils import get_openapi
+
     schema = get_openapi(
         title=app.title,
         version=app.version,
@@ -94,7 +102,7 @@ def custom_openapi() -> dict:
         routes=app.routes,
     )
     for path, methods in schema.get("paths", {}).items():
-        for method, operation in methods.items():
+        for operation in methods.values():
             if path == "/api/v1/health":
                 operation["security"] = []
     app.openapi_schema = schema
@@ -107,9 +115,7 @@ app.openapi = custom_openapi  # type: ignore[method-assign]
 def main() -> None:
     """Start the production uvicorn server."""
     app_logger.info("Starting Torrent Downloader API Server...")
-    uvicorn.run(
-        "torrent_downloader.main:app", host=config.api_host, port=config.api_port
-    )
+    uvicorn.run("torrent_downloader.main:app", host=config.api_host, port=config.api_port)
 
 
 def dev() -> None:

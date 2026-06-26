@@ -1,7 +1,5 @@
 """Tests for ErrorCode enum and AppException pure logic."""
 
-import pytest
-
 from torrent_downloader.core.errors import AppException, ErrorCode
 
 
