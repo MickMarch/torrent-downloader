@@ -7,6 +7,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.2.1] - 2026-06-29
+
+### Fixed
+
+- Install `git` in the Docker build stage so `uv sync` can clone the
+  `medialab-contracts` git-ref dependency (the v1.2 migration made it a git
+  dependency, but the Dockerfile lacked git, failing the build with "Git
+  executable not found"). Surfaced by the first whole-project
+  `docker compose build`.
+
+## [1.2.0] - 2026-06-26
+
 ### Added
 
 - `tmdb_id` (required) on `POST /download`, cached against the torrent hash and
