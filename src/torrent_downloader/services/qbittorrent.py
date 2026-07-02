@@ -5,6 +5,7 @@ from typing import Any
 
 import PTN
 import qbittorrentapi
+from medialab_contracts import MediaType, TorrentSearchScope
 from qbittorrentapi.exceptions import APIConnectionError
 
 from torrent_downloader.core.cache import app_cache
@@ -28,6 +29,16 @@ DEFAULT_SEARCH_ID: int = 0
 RES_4K_KEYS: set[str] = {"4k", "2160p"}
 RES_1080_KEYS: set[str] = {"1080p"}
 RES_720_KEYS: set[str] = {"720p"}
+
+SEARCH_CATEGORY_MOVIES: str = "movies"
+SEARCH_CATEGORY_TV: str = "tv"
+SEARCH_CATEGORY_BY_MEDIA_TYPE: dict[MediaType, str] = {
+    MediaType.MOVIE: SEARCH_CATEGORY_MOVIES,
+    MediaType.SHOW: SEARCH_CATEGORY_TV,
+}
+
+SEASON_TAG_TEMPLATE: str = "S{season:02d}"
+EPISODE_TAG_TEMPLATE: str = "S{season:02d}E{episode:02d}"
 
 
 def get_torrent_client() -> qbittorrentapi.Client | None:
@@ -98,7 +109,78 @@ def is_vpn_bound(client: qbittorrentapi.Client, expected_interface: str = "NordL
         return False
 
 
-def execute_plugin_search(client: qbittorrentapi.Client, query: str) -> list[dict[str, Any]]:
+def build_search_pattern(query: str, scope: TorrentSearchScope) -> str:
+    """Refines the search query with a season/episode tag from the scope.
+
+    Whole-title and whole-series scopes search on the bare query. A season scope
+    appends ``S0N``; an episode scope appends ``S0NE0M`` so trackers return the
+    targeted pack rather than the highest-seeded (usually latest) season.
+    """
+    if scope.season is None:
+        return query
+    if scope.episode is None:
+        return f"{query} {SEASON_TAG_TEMPLATE.format(season=scope.season)}"
+    return f"{query} {EPISODE_TAG_TEMPLATE.format(season=scope.season, episode=scope.episode)}"
+
+
+def _parsed_seasons(parsed_season: Any) -> list[int]:
+    """Normalises PTN's season field (int, list, or None) to a list of ints."""
+    if parsed_season is None:
+        return []
+    if isinstance(parsed_season, list):
+        return [int(s) for s in parsed_season]
+    return [int(parsed_season)]
+
+
+def filter_by_scope(
+    results: list[dict[str, Any]], scope: TorrentSearchScope
+) -> list[dict[str, Any]]:
+    """Drops results that do not match the requested season/episode.
+
+    Movie and whole-series scopes are returned unchanged. For a season or episode
+    scope, each result's filename is PTN-parsed and classified:
+
+    - primary: the release targets exactly the requested season (a single-season
+      pack, or the exact requested episode within it).
+    - fallback: a multi-season range pack that spans the requested season, or a
+      complete-series pack (no parseable season). Kept so the set is never empty.
+
+    Primary matches are returned before fallbacks; everything else is dropped.
+    """
+    if scope.season is None:
+        return results
+
+    primary: list[dict[str, Any]] = []
+    fallback: list[dict[str, Any]] = []
+
+    for result in results:
+        parsed: dict[str, Any] = PTN.parse(result.get("fileName", ""))
+        seasons: list[int] = _parsed_seasons(parsed.get("season"))
+        episode: Any = parsed.get("episode")
+
+        if not seasons:
+            fallback.append(result)
+            continue
+
+        if len(seasons) > 1:
+            if scope.season in seasons:
+                fallback.append(result)
+            continue
+
+        if seasons[0] != scope.season:
+            continue
+
+        if scope.episode is None or episode == scope.episode:
+            primary.append(result)
+        elif episode is None:
+            fallback.append(result)
+
+    return primary + fallback
+
+
+def execute_plugin_search(
+    client: qbittorrentapi.Client, query: str, category: str
+) -> list[dict[str, Any]]:
     """Runs the qBittorrent plugin search loop and returns raw results.
 
     Polls until all plugins report completion or the configured timeout is reached,
@@ -106,7 +188,7 @@ def execute_plugin_search(client: qbittorrentapi.Client, query: str) -> list[dic
     are fetched.
     """
     search_job: dict[str, Any] = client.search_start(
-        pattern=query, plugins="all", category="movies"
+        pattern=query, plugins="all", category=category
     )
 
     search_id: int = search_job.get("id", DEFAULT_SEARCH_ID)
@@ -132,17 +214,30 @@ def execute_plugin_search(client: qbittorrentapi.Client, query: str) -> list[dic
     return results.get("results", [])
 
 
-def search_torrents(client: qbittorrentapi.Client, query: str) -> list[dict[str, Any]]:
-    """Returns cached torrent results or executes a new search."""
-    cache_key: str = f"torrent_search_{query}"
+def _scope_cache_key(query: str, scope: TorrentSearchScope) -> str:
+    """Builds a cache key that varies by query and requested season/episode.
+
+    Without the season/episode in the key a season-2 search would return a cached
+    season-5 result set for the same show title.
+    """
+    return f"torrent_search_{query}_{scope.media_type.value}_{scope.season}_{scope.episode}"
+
+
+def search_torrents(
+    client: qbittorrentapi.Client, query: str, scope: TorrentSearchScope
+) -> list[dict[str, Any]]:
+    """Returns cached torrent results or executes a new scope-aware search."""
+    cache_key: str = _scope_cache_key(query, scope)
     cached_results: Any = app_cache.get(cache_key)
 
     if cached_results is not None:
-        app_logger.info(f"Returning cached results for query: '{query}'")
+        app_logger.info(f"Returning cached results for query: '{query}' scope: {cache_key}")
         return cached_results
 
-    app_logger.info(f"Initiating new search for query: '{query}'")
-    parsed_results: list[dict[str, Any]] = execute_plugin_search(client, query)
+    pattern: str = build_search_pattern(query, scope)
+    category: str = SEARCH_CATEGORY_BY_MEDIA_TYPE[scope.media_type]
+    app_logger.info(f"Initiating new search for pattern: '{pattern}' category: '{category}'")
+    parsed_results: list[dict[str, Any]] = execute_plugin_search(client, pattern, category)
 
     app_logger.info(f"Search completed. Found {len(parsed_results)} total results.")
     app_cache.set(cache_key, parsed_results, expire=config.cache_expiration_seconds)

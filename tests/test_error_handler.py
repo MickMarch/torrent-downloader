@@ -123,5 +123,5 @@ class TestRouterErrorCodes:
         self, client: TestClient, mocker: MockerFixture
     ) -> None:
         mocker.patch("torrent_downloader.routers.search.get_torrent_client", return_value=None)
-        body = client.get("/api/v1/search/torrents?query=test").json()
+        body = client.get("/api/v1/search/torrents?query=test&media_type=movie").json()
         assert body["code"] == ErrorCode.QB_UNAVAILABLE.value

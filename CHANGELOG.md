@@ -7,6 +7,25 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- TV season/episode targeting on `GET /api/v1/search/torrents`. `media_type` is
+  now a required query param; shows accept optional `season` and `episode`
+  params. The search pattern is refined with an `S0N`/`S0NE0M` tag and results
+  are strictly filtered to the requested season - non-matching seasons are
+  dropped, while multi-season range packs and complete-series packs are kept as
+  ranked-below fallbacks so the set is never empty. Fixes older seasons being
+  buried by the latest season's higher-seeded packs. Consumes the
+  `TorrentSearchScope` model from medialab-contracts v0.3.0.
+
+### Changed
+
+- `medialab-contracts` pin bumped to v0.3.0.
+- Torrent search plugin category is now chosen from `media_type` (`movies` vs
+  `tv`) instead of always `movies`.
+- The torrent search cache key now varies by `media_type`/`season`/`episode`, so
+  a season-specific search no longer returns a cached whole-series result set.
+
 ## [1.2.1] - 2026-06-29
 
 ### Fixed

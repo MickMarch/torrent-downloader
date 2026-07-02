@@ -5,6 +5,8 @@ from typing import Any
 import qbittorrentapi
 from fastapi import APIRouter, Request
 from fastapi import status as fastapi_status
+from medialab_contracts import MediaType, TorrentSearchScope
+from pydantic import ValidationError
 
 from torrent_downloader.core.constants import TAG_SEARCH
 from torrent_downloader.core.errors import AppException, ErrorCode
@@ -18,6 +20,7 @@ from torrent_downloader.schemas.tmdb import (
 from torrent_downloader.schemas.torrents import TorrentResult, TorrentSearchResponse
 from torrent_downloader.services.qbittorrent import (
     filter_and_sort_results,
+    filter_by_scope,
     get_torrent_client,
     group_by_resolution,
     search_torrents,
@@ -78,8 +81,29 @@ def api_search_tmdb(request: Request, query: str) -> TmdbSearchResponse:
     },
 )
 @limiter.limit(RATE_LIMIT_SEARCH)
-def api_search_torrents(request: Request, query: str) -> TorrentSearchResponse:
-    """Search for torrents via qBittorrent plugins and return results grouped by resolution."""
+def api_search_torrents(
+    request: Request,
+    query: str,
+    media_type: MediaType,
+    season: int | None = None,
+    episode: int | None = None,
+) -> TorrentSearchResponse:
+    """Search for torrents via qBittorrent plugins and return results grouped by resolution.
+
+    ``media_type`` is required. For shows, an optional ``season`` (and ``episode``)
+    targets the search at a specific season/episode instead of the show as a whole.
+    """
+    try:
+        scope: TorrentSearchScope = TorrentSearchScope(
+            media_type=media_type, season=season, episode=episode
+        )
+    except ValidationError as error:
+        raise AppException(
+            status_code=fastapi_status.HTTP_422_UNPROCESSABLE_CONTENT,
+            code=ErrorCode.INVALID_INPUT,
+            detail="Invalid season/episode combination for the requested media type.",
+        ) from error
+
     client: qbittorrentapi.Client | None = get_torrent_client()
     if not client:
         raise AppException(
@@ -88,11 +112,12 @@ def api_search_torrents(request: Request, query: str) -> TorrentSearchResponse:
             detail="qBittorrent client unavailable.",
         )
 
-    raw_results: list[dict[str, Any]] = search_torrents(client, query)
+    raw_results: list[dict[str, Any]] = search_torrents(client, query, scope)
     processed_results: list[dict[str, Any]] = filter_and_sort_results(raw_results)
+    scoped_results: list[dict[str, Any]] = filter_by_scope(processed_results, scope)
     grouped: dict[str, list[TorrentResult]] = {
         resolution: [TorrentResult(**item) for item in items]
-        for resolution, items in group_by_resolution(processed_results).items()
+        for resolution, items in group_by_resolution(scoped_results).items()
     }
 
     return TorrentSearchResponse(status="success", message="", data=grouped)

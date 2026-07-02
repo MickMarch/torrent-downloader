@@ -27,42 +27,35 @@ MOCK_FILTERED_RESULTS: list[dict[str, Any]] = [
 ]
 
 
+MOVIE_PARAMS = {"query": "inception", "media_type": "movie"}
+
+
+def _patch_pipeline(mocker: MockerFixture, results: list[dict[str, Any]]) -> None:
+    mocker.patch(
+        "torrent_downloader.routers.search.get_torrent_client", return_value=mocker.MagicMock()
+    )
+    mocker.patch("torrent_downloader.routers.search.search_torrents", return_value=results)
+    mocker.patch("torrent_downloader.routers.search.filter_and_sort_results", return_value=results)
+
+
 class TestSearchTorrentsRoute:
     def test_returns_503_when_client_unavailable(
         self, client: TestClient, mocker: MockerFixture
     ) -> None:
         mocker.patch("torrent_downloader.routers.search.get_torrent_client", return_value=None)
-        response = client.get(SEARCH_URL, params={"query": "inception"})
+        response = client.get(SEARCH_URL, params=MOVIE_PARAMS)
         assert response.status_code == 503
 
     def test_returns_200_with_valid_client(self, client: TestClient, mocker: MockerFixture) -> None:
-        mocker.patch(
-            "torrent_downloader.routers.search.get_torrent_client", return_value=mocker.MagicMock()
-        )
-        mocker.patch(
-            "torrent_downloader.routers.search.search_torrents", return_value=MOCK_FILTERED_RESULTS
-        )
-        mocker.patch(
-            "torrent_downloader.routers.search.filter_and_sort_results",
-            return_value=MOCK_FILTERED_RESULTS,
-        )
-        response = client.get(SEARCH_URL, params={"query": "inception"})
+        _patch_pipeline(mocker, MOCK_FILTERED_RESULTS)
+        response = client.get(SEARCH_URL, params=MOVIE_PARAMS)
         assert response.status_code == 200
 
     def test_response_shape_has_status_message_data(
         self, client: TestClient, mocker: MockerFixture
     ) -> None:
-        mocker.patch(
-            "torrent_downloader.routers.search.get_torrent_client", return_value=mocker.MagicMock()
-        )
-        mocker.patch(
-            "torrent_downloader.routers.search.search_torrents", return_value=MOCK_FILTERED_RESULTS
-        )
-        mocker.patch(
-            "torrent_downloader.routers.search.filter_and_sort_results",
-            return_value=MOCK_FILTERED_RESULTS,
-        )
-        body = client.get(SEARCH_URL, params={"query": "inception"}).json()
+        _patch_pipeline(mocker, MOCK_FILTERED_RESULTS)
+        body = client.get(SEARCH_URL, params=MOVIE_PARAMS).json()
         assert "status" in body
         assert "message" in body
         assert "data" in body
@@ -70,31 +63,52 @@ class TestSearchTorrentsRoute:
     def test_results_grouped_by_resolution_keys(
         self, client: TestClient, mocker: MockerFixture
     ) -> None:
-        mocker.patch(
-            "torrent_downloader.routers.search.get_torrent_client", return_value=mocker.MagicMock()
-        )
-        mocker.patch(
-            "torrent_downloader.routers.search.search_torrents", return_value=MOCK_FILTERED_RESULTS
-        )
-        mocker.patch(
-            "torrent_downloader.routers.search.filter_and_sort_results",
-            return_value=MOCK_FILTERED_RESULTS,
-        )
-        data = client.get(SEARCH_URL, params={"query": "inception"}).json()["data"]
+        _patch_pipeline(mocker, MOCK_FILTERED_RESULTS)
+        data = client.get(SEARCH_URL, params=MOVIE_PARAMS).json()["data"]
         for key in data:
             assert key in ("4K", "1080p", "720p")
 
     def test_returns_empty_data_when_no_results(
         self, client: TestClient, mocker: MockerFixture
     ) -> None:
-        mocker.patch(
-            "torrent_downloader.routers.search.get_torrent_client", return_value=mocker.MagicMock()
-        )
-        mocker.patch("torrent_downloader.routers.search.search_torrents", return_value=[])
-        mocker.patch("torrent_downloader.routers.search.filter_and_sort_results", return_value=[])
-        body = client.get(SEARCH_URL, params={"query": "xyzzy"}).json()
+        _patch_pipeline(mocker, [])
+        body = client.get(SEARCH_URL, params={"query": "xyzzy", "media_type": "movie"}).json()
         assert body["data"] == {}
 
     def test_requires_query_param(self, client: TestClient) -> None:
-        response = client.get(SEARCH_URL)
+        response = client.get(SEARCH_URL, params={"media_type": "movie"})
         assert response.status_code == 422
+
+    def test_requires_media_type_param(self, client: TestClient) -> None:
+        response = client.get(SEARCH_URL, params={"query": "inception"})
+        assert response.status_code == 422
+
+    def test_movie_with_season_is_rejected(self, client: TestClient, mocker: MockerFixture) -> None:
+        _patch_pipeline(mocker, MOCK_FILTERED_RESULTS)
+        response = client.get(
+            SEARCH_URL, params={"query": "inception", "media_type": "movie", "season": 1}
+        )
+        assert response.status_code == 422
+
+    def test_orphan_episode_is_rejected(self, client: TestClient, mocker: MockerFixture) -> None:
+        _patch_pipeline(mocker, MOCK_FILTERED_RESULTS)
+        response = client.get(
+            SEARCH_URL, params={"query": "show", "media_type": "show", "episode": 3}
+        )
+        assert response.status_code == 422
+
+    def test_show_season_search_threads_scope_into_filter(
+        self, client: TestClient, mocker: MockerFixture
+    ) -> None:
+        _patch_pipeline(mocker, MOCK_FILTERED_RESULTS)
+        spy = mocker.patch(
+            "torrent_downloader.routers.search.filter_by_scope",
+            return_value=MOCK_FILTERED_RESULTS,
+        )
+        response = client.get(
+            SEARCH_URL, params={"query": "the wire", "media_type": "show", "season": 2}
+        )
+        assert response.status_code == 200
+        scope_arg = spy.call_args.args[1]
+        assert scope_arg.season == 2
+        assert scope_arg.episode is None
