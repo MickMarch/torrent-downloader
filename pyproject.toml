@@ -15,7 +15,7 @@ dependencies = [
     "medialab-contracts",
     "parse-torrent-title>=2.8.2",
     "pydantic-settings>=2.14.2",
-    "qbittorrent-api>=2026.5.1",
+    "qbittorrent-api>=2026.6.1",
     "requests>=2.34.0",
     "slowapi>=0.1.9",
     "starlette>=1.3.1",
