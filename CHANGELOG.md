@@ -7,6 +7,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+
+- TV detail route renamed from `GET /api/v1/search/tmdb/tv/{series_id}` to
+  `GET /api/v1/search/tmdb/show/{series_id}`, matching the documented API
+  surface and the shared `MediaType` vocabulary (`movie`/`show`). The
+  orchestrator builds this path from `MediaType.SHOW.value`, so the old `tv`
+  segment returned 404 through the gateway - which silently disabled the bot's
+  TV season/episode scope picker and degraded show title resolution.
+
 ## [1.3.0] - 2026-07-02
 
 ### Added

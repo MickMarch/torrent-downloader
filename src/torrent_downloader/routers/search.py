@@ -140,7 +140,7 @@ def api_get_movie_details(request: Request, movie_id: int) -> TmdbMediaDetailRes
 
 
 @router.get(
-    "/tmdb/tv/{series_id}",
+    "/tmdb/show/{series_id}",
     response_model=TmdbMediaDetailResponse,
     status_code=fastapi_status.HTTP_200_OK,
     summary="Returns full TMDB details for a TV series by ID.",
