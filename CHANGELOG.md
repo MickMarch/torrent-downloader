@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.3.2] - 2026-07-17
+
 ### Fixed
 
 - Season-scope search pattern changed from an `S0N` tag to `Season N`
