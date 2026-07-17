@@ -37,7 +37,9 @@ SEARCH_CATEGORY_BY_MEDIA_TYPE: dict[MediaType, str] = {
     MediaType.SHOW: SEARCH_CATEGORY_TV,
 }
 
-SEASON_TAG_TEMPLATE: str = "S{season:02d}"
+# Season packs are usually released as "Show Season 2" while single episodes
+# use the S02E05 tag, so the two scopes take different pattern shapes.
+SEASON_TAG_TEMPLATE: str = "Season {season}"
 EPISODE_TAG_TEMPLATE: str = "S{season:02d}E{episode:02d}"
 
 
@@ -113,8 +115,9 @@ def build_search_pattern(query: str, scope: TorrentSearchScope) -> str:
     """Refines the search query with a season/episode tag from the scope.
 
     Whole-title and whole-series scopes search on the bare query. A season scope
-    appends ``S0N``; an episode scope appends ``S0NE0M`` so trackers return the
-    targeted pack rather than the highest-seeded (usually latest) season.
+    appends ``Season N`` (how season packs are usually named); an episode scope
+    appends ``S0NE0M`` so trackers return the targeted episode rather than the
+    highest-seeded (usually latest) season.
     """
     if scope.season is None:
         return query
