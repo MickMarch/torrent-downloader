@@ -80,10 +80,17 @@ class TestGroupByResolution:
         grouped = group_by_resolution(results)
         assert len(grouped.get("720p", [])) == 1
 
-    def test_omits_unknown_resolutions(self) -> None:
+    def test_buckets_unknown_resolution_into_other(self) -> None:
+        # Untagged / SD releases (common for older TV) must not be dropped -
+        # they belong in the Other bucket so they still reach the picker.
         results = [make_result("Movie.480p.DVDRip", 20)]
         grouped = group_by_resolution(results)
-        assert grouped == {}
+        assert len(grouped.get("Other", [])) == 1
+
+    def test_buckets_no_resolution_token_into_other(self) -> None:
+        results = [make_result("The Simpsons Season 23 Episode 22 HDTV", 24)]
+        grouped = group_by_resolution(results)
+        assert len(grouped.get("Other", [])) == 1
 
     def test_omits_empty_resolution_buckets(self) -> None:
         results = [make_result("Movie.1080p.BluRay", 50)]
@@ -106,3 +113,4 @@ class TestGroupByResolution:
         assert len(grouped["1080p"]) == 1
         assert len(grouped["720p"]) == 1
         assert "480p" not in grouped
+        assert len(grouped["Other"]) == 1
