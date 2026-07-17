@@ -1,4 +1,4 @@
-"""HTTP layer tests for GET /api/v1/search/tmdb/movie/{id} and /api/v1/search/tmdb/tv/{id}."""
+"""HTTP layer tests for GET /api/v1/search/tmdb/movie/{id} and /api/v1/search/tmdb/show/{id}."""
 
 from typing import Any
 
@@ -81,13 +81,13 @@ class TestTvDetailsRoute:
         mocker.patch(
             "torrent_downloader.routers.search.get_tv_details", return_value=MOCK_TV_PAYLOAD
         )
-        assert client.get("/api/v1/search/tmdb/tv/1396").status_code == 200
+        assert client.get("/api/v1/search/tmdb/show/1396").status_code == 200
 
     def test_response_status_is_success(self, client: TestClient, mocker: MockerFixture) -> None:
         mocker.patch(
             "torrent_downloader.routers.search.get_tv_details", return_value=MOCK_TV_PAYLOAD
         )
-        body = client.get("/api/v1/search/tmdb/tv/1396").json()
+        body = client.get("/api/v1/search/tmdb/show/1396").json()
         assert body["status"] == "success"
         assert "data" in body
 
@@ -97,7 +97,7 @@ class TestTvDetailsRoute:
         mocker.patch(
             "torrent_downloader.routers.search.get_tv_details", return_value=MOCK_TV_PAYLOAD
         )
-        data = client.get("/api/v1/search/tmdb/tv/1396").json()["data"]
+        data = client.get("/api/v1/search/tmdb/show/1396").json()["data"]
         assert data["id"] == 1396
         assert data["name"] == "Breaking Bad"
         assert data["number_of_seasons"] == 5
@@ -107,9 +107,9 @@ class TestTvDetailsRoute:
         self, client: TestClient, mocker: MockerFixture
     ) -> None:
         mocker.patch("torrent_downloader.routers.search.get_tv_details", return_value={})
-        body = client.get("/api/v1/search/tmdb/tv/99999999").json()
+        body = client.get("/api/v1/search/tmdb/show/99999999").json()
         assert body["status"] == "error"
         assert body["data"] is None
 
     def test_returns_422_for_non_integer_series_id(self, client: TestClient) -> None:
-        assert client.get("/api/v1/search/tmdb/tv/not-an-id").status_code == 422
+        assert client.get("/api/v1/search/tmdb/show/not-an-id").status_code == 422
