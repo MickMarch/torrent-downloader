@@ -30,6 +30,13 @@ RES_4K_KEYS: set[str] = {"4k", "2160p"}
 RES_1080_KEYS: set[str] = {"1080p"}
 RES_720_KEYS: set[str] = {"720p"}
 
+RES_GROUP_4K: str = "4K"
+RES_GROUP_1080: str = "1080p"
+RES_GROUP_720: str = "720p"
+# Catch-all for releases with no parseable or unrecognised resolution (common
+# for older/SD TV, e.g. HDTV/DVDRip rips) so they are never silently dropped.
+RES_GROUP_OTHER: str = "Other"
+
 SEARCH_CATEGORY_MOVIES: str = "movies"
 SEARCH_CATEGORY_TV: str = "tv"
 SEARCH_CATEGORY_BY_MEDIA_TYPE: dict[MediaType, str] = {
@@ -268,18 +275,30 @@ def filter_and_sort_results(results: list[dict[str, Any]]) -> list[dict[str, Any
 def group_by_resolution(
     results: list[dict[str, Any]],
 ) -> dict[str, list[dict[str, Any]]]:
-    """Categorizes parsed torrent dictionaries by target resolutions."""
-    grouped: dict[str, list[dict[str, Any]]] = {"4K": [], "1080p": [], "720p": []}
+    """Categorizes parsed torrent dictionaries by target resolutions.
+
+    Results with no parseable or unrecognised resolution fall into an ``Other``
+    bucket rather than being dropped, so valid low-tag releases still reach the
+    caller.
+    """
+    grouped: dict[str, list[dict[str, Any]]] = {
+        RES_GROUP_4K: [],
+        RES_GROUP_1080: [],
+        RES_GROUP_720: [],
+        RES_GROUP_OTHER: [],
+    }
 
     for result in results:
         parsed: dict[str, Any] = PTN.parse(result.get("fileName", ""))
         resolution: str = str(parsed.get("resolution", "")).lower()
 
         if resolution in RES_4K_KEYS:
-            grouped["4K"].append(result)
+            grouped[RES_GROUP_4K].append(result)
         elif resolution in RES_1080_KEYS:
-            grouped["1080p"].append(result)
+            grouped[RES_GROUP_1080].append(result)
         elif resolution in RES_720_KEYS:
-            grouped["720p"].append(result)
+            grouped[RES_GROUP_720].append(result)
+        else:
+            grouped[RES_GROUP_OTHER].append(result)
 
     return {k: v for k, v in grouped.items() if v}

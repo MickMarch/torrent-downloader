@@ -7,6 +7,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+
+- Torrent results with no parseable or unrecognised resolution (common for
+  older/SD TV rips like HDTV and DVDRip) are now bucketed under `Other` in
+  `GET /api/v1/search/torrents` instead of being silently dropped. Previously
+  `group_by_resolution` kept only 4K/1080p/720p, so a show search that returned
+  only untagged releases came back empty even when viable, well-seeded torrents
+  existed (e.g. "The Simpsons Season 23").
+
 ## [1.3.2] - 2026-07-17
 
 ### Fixed
