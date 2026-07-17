@@ -7,6 +7,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+
+- Season-scope search pattern changed from an `S0N` tag to `Season N`
+  ("The Wire Season 2"), matching how season packs are actually named on
+  trackers. The `S0N` form mostly matched single-episode releases, so
+  season-scoped searches returned few or no pack hits. Episode scope keeps
+  the `S0NE0M` tag.
+
 ## [1.3.1] - 2026-07-17
 
 ### Fixed
