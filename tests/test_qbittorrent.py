@@ -24,25 +24,18 @@ class TestFilterAndSortResults:
         filtered = filter_and_sort_results(results)
         assert all(r["nbSeeders"] >= 10 for r in filtered)
 
-    def test_keeps_magnet_and_torrent_file_urls(self) -> None:
-        # Tier A: a .torrent file URL is a valid source (qBittorrent fetches it);
-        # only HTML details pages are still dropped.
+    def test_keeps_magnet_torrent_file_and_html_page_urls(self) -> None:
+        # Every torrent-source URL a plugin returns is addable: magnets and
+        # .torrent files add directly; HTML details pages get their magnet
+        # scraped at download time.
         results = [
             make_result("torrent_file", 50, url="https://www.torlock.com/tor/123.torrent"),
-            make_result("has_magnet", 50),
-        ]
-        filtered = filter_and_sort_results(results)
-        names = {r["fileName"] for r in filtered}
-        assert names == {"torrent_file", "has_magnet"}
-
-    def test_removes_html_details_page_urls(self) -> None:
-        results = [
             make_result("details_page", 50, url="https://www.limetorrents.lol/x-torrent-1.html"),
             make_result("has_magnet", 50),
         ]
         filtered = filter_and_sort_results(results)
-        assert len(filtered) == 1
-        assert filtered[0]["fileName"] == "has_magnet"
+        names = {r["fileName"] for r in filtered}
+        assert names == {"torrent_file", "details_page", "has_magnet"}
 
     def test_sorts_descending_by_seeder_count(self) -> None:
         results = [make_result("c", 15), make_result("a", 100), make_result("b", 40)]
@@ -51,8 +44,8 @@ class TestFilterAndSortResults:
         assert seed_counts == sorted(seed_counts, reverse=True)
 
     def test_returns_empty_list_when_all_filtered(self) -> None:
-        # low seeders + an HTML page (not a .torrent, not a magnet) -> both dropped.
-        results = [make_result("low", 1), make_result("html_page", 50, url="http://x.com/a.html")]
+        # low seeders + an unaddable source (neither magnet nor http) -> both dropped.
+        results = [make_result("low", 1), make_result("bogus", 50, url="ftp://x.com/a")]
         assert filter_and_sort_results(results) == []
 
     def test_returns_empty_list_for_empty_input(self) -> None:

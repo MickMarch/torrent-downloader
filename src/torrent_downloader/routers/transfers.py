@@ -18,11 +18,15 @@ from torrent_downloader.schemas.downloads import DownloadRequest, DownloadRespon
 from torrent_downloader.schemas.errors import ErrorResponse
 from torrent_downloader.schemas.transfers import TransferHashInfo, TransferInfoResponse
 from torrent_downloader.services.qbittorrent import (
-    MAGNET_URL_PREFIX,
     get_active_transfers,
     get_torrent_client,
     is_vpn_bound,
     stop_seeding_transfers,
+)
+from torrent_downloader.services.source import (
+    SourceKind,
+    classify_source,
+    scrape_magnet_from_page,
 )
 
 router = APIRouter(tags=[TAG_TRANSFERS])
@@ -111,14 +115,29 @@ def api_trigger_download(request: Request, payload: DownloadRequest) -> Download
             message=f"Dry run bypassed download. Target: {host_path}",
         )
 
-    is_magnet = payload.source_url.startswith(MAGNET_URL_PREFIX)
-    # For a magnet the hash is in the URI; for a .torrent URL it is only known
-    # after qBittorrent computes it, so snapshot the tracked hashes first and
-    # diff after the add.
+    kind = classify_source(payload.source_url)
+
+    # An HTML details page carries the magnet inside it; scrape it and proceed
+    # exactly as for a magnet (the scraped magnet carries the btih hash).
+    add_url = payload.source_url
+    if kind is SourceKind.HTML_PAGE:
+        scraped = scrape_magnet_from_page(payload.source_url)
+        if scraped is None:
+            raise AppException(
+                status_code=fastapi_status.HTTP_422_UNPROCESSABLE_CONTENT,
+                code=ErrorCode.INVALID_INPUT,
+                detail="Could not extract a magnet from the details page.",
+            )
+        add_url = scraped
+        kind = SourceKind.MAGNET
+
+    # A magnet's hash is in the URI; a .torrent file's hash is only known after
+    # qBittorrent computes it, so snapshot the tracked hashes and diff post-add.
+    is_magnet = kind is SourceKind.MAGNET
     pre_add_hashes = set() if is_magnet else _snapshot_hashes(client)
 
     try:
-        client.torrents_add(urls=payload.source_url, save_path=host_path)
+        client.torrents_add(urls=add_url, save_path=host_path)
     except Conflict409Error:
         return DownloadResponse(
             status="conflict",
@@ -126,9 +145,7 @@ def api_trigger_download(request: Request, payload: DownloadRequest) -> Download
         )
 
     torrent_hash = (
-        _extract_hash(payload.source_url)
-        if is_magnet
-        else _resolve_added_hash(client, pre_add_hashes)
+        _extract_hash(add_url) if is_magnet else _resolve_added_hash(client, pre_add_hashes)
     )
 
     if torrent_hash:

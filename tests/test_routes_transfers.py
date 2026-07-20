@@ -231,6 +231,69 @@ class TestDownloadTorrentFileUrl:
         mock_logger.warning.assert_called_once()
 
 
+DETAILS_PAGE = "https://www.limetorrents.lol/Foo-torrent-123.html"
+SCRAPED_MAGNET = "magnet:?xt=urn:btih:612c3d851d51d36830bf6d439e63e66967508044&dn=Foo"
+SCRAPED_HASH = "612c3d851d51d36830bf6d439e63e66967508044"
+
+
+class TestDownloadHtmlPageUrl:
+    def test_scrapes_magnet_then_adds_it(self, client: TestClient, mocker: MockerFixture) -> None:
+        mock_client = mocker.MagicMock()
+        mocker.patch(
+            "torrent_downloader.routers.transfers.get_torrent_client", return_value=mock_client
+        )
+        mocker.patch("torrent_downloader.routers.transfers.is_vpn_bound", return_value=True)
+        mocker.patch(
+            "torrent_downloader.routers.transfers.scrape_magnet_from_page",
+            return_value=SCRAPED_MAGNET,
+        )
+
+        client.post("/api/v1/download", json=_download_body(DETAILS_PAGE, "show"))
+
+        # The scraped magnet is what gets added - never the HTML page URL.
+        mock_client.torrents_add.assert_called_once_with(
+            urls=SCRAPED_MAGNET, save_path="F:\\Media\\Shows"
+        )
+
+    def test_hash_parsed_from_scraped_magnet(
+        self, client: TestClient, mocker: MockerFixture
+    ) -> None:
+        mock_client = mocker.MagicMock()
+        mocker.patch(
+            "torrent_downloader.routers.transfers.get_torrent_client", return_value=mock_client
+        )
+        mocker.patch("torrent_downloader.routers.transfers.is_vpn_bound", return_value=True)
+        mocker.patch(
+            "torrent_downloader.routers.transfers.scrape_magnet_from_page",
+            return_value=SCRAPED_MAGNET,
+        )
+
+        response = client.post("/api/v1/download", json=_download_body(DETAILS_PAGE, "show"))
+
+        assert response.json()["torrent_hash"] == SCRAPED_HASH
+        from torrent_downloader.core.cache import app_cache
+
+        assert app_cache.get(f"media_type:{SCRAPED_HASH}") is not None
+        mock_client.torrents_info.assert_not_called()
+
+    def test_unscrapeable_page_returns_error(
+        self, client: TestClient, mocker: MockerFixture
+    ) -> None:
+        mock_client = mocker.MagicMock()
+        mocker.patch(
+            "torrent_downloader.routers.transfers.get_torrent_client", return_value=mock_client
+        )
+        mocker.patch("torrent_downloader.routers.transfers.is_vpn_bound", return_value=True)
+        mocker.patch(
+            "torrent_downloader.routers.transfers.scrape_magnet_from_page", return_value=None
+        )
+
+        response = client.post("/api/v1/download", json=_download_body(DETAILS_PAGE, "movie"))
+
+        assert response.status_code == 422
+        mock_client.torrents_add.assert_not_called()
+
+
 class TestMagnetResponseHash:
     def test_magnet_response_carries_parsed_hash(
         self, client: TestClient, mocker: MockerFixture

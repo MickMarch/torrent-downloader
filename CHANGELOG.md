@@ -7,6 +7,22 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- HTML details-page sources are now downloadable. When `source_url` is a tracker
+  details page (not a magnet or `.torrent` file), `POST /download` fetches the
+  page and scrapes the embedded `magnet:?xt=urn:btih:...`, then adds that magnet
+  (`services/source.py`). This is where the seeded results for many shows live
+  (e.g. limetorrents), so shows that returned only page URLs are now downloadable.
+  An unscrapeable page returns 422. `services/source.py` also centralises source
+  classification (magnet / `.torrent` file / HTML page).
+
+### Changed
+
+- Torrent search filtering now keeps any magnet or http source URL (magnet,
+  `.torrent` file, or HTML details page) - all three are addable now that pages
+  are scraped. Only non-http, non-magnet URLs are dropped.
+
 ## [1.4.0] - 2026-07-20
 
 ### Changed

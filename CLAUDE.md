@@ -49,7 +49,7 @@ FastAPI REST API wrapping two external integrations: qBittorrent (torrent client
 **Request flow for a download:**
 1. Client calls `GET /api/v1/search/tmdb?query=...` → TMDB lookup returns movie/show metadata
 2. Client calls `GET /api/v1/search/torrents?query=...&media_type=...` → qBittorrent plugin search (category from `media_type`), results grouped by resolution (4K/1080p/720p). For shows, optional `season`/`episode` refine the search pattern (`S0N`/`S0NE0M`) and strictly filter results to the requested season.
-3. Client calls `POST /api/v1/download` with a selected `source_url` (a magnet URI or an http `.torrent` file URL) → VPN binding enforced before add. For a `.torrent` URL the info-hash is read back from qBittorrent (snapshot diff) after the add and returned as `torrent_hash`.
+3. Client calls `POST /api/v1/download` with a selected `source_url` → VPN binding enforced before add. `source_url` is one of three shapes (classified in `services/source.py`): a magnet (added directly, hash from the URI), an http `.torrent` file URL (added directly, hash read back via snapshot diff), or an http HTML details page (magnet scraped from the page, then added as a magnet; 422 if unscrapeable). The resolved info-hash is returned as `torrent_hash`.
 
 **Auth:** All endpoints except `/api/v1/health` require `X-API-Key: <API_KEY>`. Implemented in `core/auth.py` via FastAPI `Security(APIKeyHeader)`. Missing key → 403 with `UNAUTHORIZED` code. Wrong key → 403 with `UNAUTHORIZED` code. Applied via `dependencies=[Depends(verify_api_key)]` on `include_router` calls in `main.py`; system routes apply it per-route so `/health` stays public.
 
@@ -73,11 +73,12 @@ FastAPI REST API wrapping two external integrations: qBittorrent (torrent client
 - `core/errors.py` — `ErrorCode` enum, `AppException`
 - `services/qbittorrent.py` — all qBittorrent logic: client init, search (with timeout polling), filter/sort/group, transfers, VPN check
 - `services/tmdb.py` — TMDB search + field extractors
+- `services/source.py` — source-URL classification (magnet / `.torrent` file / HTML page) + magnet scraping from a details page
 - `schemas/` — Pydantic models for request/response validation; `errors.py` holds shared `ErrorResponse`
 - `routers/` — APIRouter modules grouped by domain (`system`, `search`, `transfers`); registered in `main.py` via `include_router` with `prefix="/api/v1"`
 - `main.py` — FastAPI app instantiation, middleware stack, exception handlers, router registration, custom OpenAPI schema, uvicorn entrypoints
 
-**Search result pipeline:** `search_torrents` (builds the scope-aware pattern + cache key, picks the plugin category from `media_type`) → `execute_plugin_search` (raw qBittorrent plugin results) → `filter_and_sort_results` (drop below min seeders, keep addable sources - magnet or `.torrent` URL, drop HTML details pages, sort desc by seeders) → `filter_by_scope` (for a season/episode scope, PTN parse filename → keep primary season/episode matches, keep range/complete-series packs as ranked-below fallbacks, drop the rest) → `group_by_resolution` (PTN parse filename → bucket into 4K/1080p/720p). Movie and whole-series scopes skip `filter_by_scope`.
+**Search result pipeline:** `search_torrents` (builds the scope-aware pattern + cache key, picks the plugin category from `media_type`) → `execute_plugin_search` (raw qBittorrent plugin results) → `filter_and_sort_results` (drop below min seeders, keep addable sources - any magnet or http URL: magnet, `.torrent` file, or HTML details page, sort desc by seeders) → `filter_by_scope` (for a season/episode scope, PTN parse filename → keep primary season/episode matches, keep range/complete-series packs as ranked-below fallbacks, drop the rest) → `group_by_resolution` (PTN parse filename → bucket into 4K/1080p/720p). Movie and whole-series scopes skip `filter_by_scope`.
 
 **Torrent search uses qBittorrent's built-in search plugin system** (not a direct tracker API). Search is async-polled with a configurable timeout; hanging plugins are stopped explicitly.
 
