@@ -39,6 +39,7 @@ RES_GROUP_OTHER: str = "Other"
 
 MAGNET_URL_PREFIX: str = "magnet:?"
 TORRENT_FILE_SUFFIX: str = ".torrent"
+HTTP_URL_PREFIX: str = "http"
 
 SEARCH_CATEGORY_MOVIES: str = "movies"
 SEARCH_CATEGORY_TV: str = "tv"
@@ -258,14 +259,13 @@ def search_torrents(
 
 
 def is_addable_source(file_url: str) -> bool:
-    """True if the URL is something qBittorrent can add directly.
+    """True if the URL is a usable torrent source.
 
-    A magnet URI or an http ``.torrent`` file URL both add natively. HTML
-    details pages (which some plugins return in ``fileUrl``) are not addable
-    without scraping the magnet out of the page, so they are excluded here
-    (details-page scraping is a later tier).
+    A magnet URI or an http ``.torrent`` file URL add to qBittorrent directly;
+    an http HTML details page has its magnet scraped at download time. All three
+    are torrent sources the plugins return, so any magnet or http URL qualifies.
     """
-    return file_url.startswith(MAGNET_URL_PREFIX) or file_url.endswith(TORRENT_FILE_SUFFIX)
+    return file_url.startswith(MAGNET_URL_PREFIX) or file_url.startswith(HTTP_URL_PREFIX)
 
 
 def filter_and_sort_results(results: list[dict[str, Any]]) -> list[dict[str, Any]]:
