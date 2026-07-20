@@ -7,6 +7,26 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed
+
+- `POST /download` now accepts `source_url` (renamed from `magnet_uri`), which
+  may be a magnet URI OR an http `.torrent` file URL. qBittorrent adds either
+  directly. This recovers results from plugins that return a `.torrent` link
+  instead of a magnet (e.g. torlock), which were previously dropped entirely -
+  the reason some TV searches returned no downloadable options.
+- Torrent search filtering (`filter_and_sort_results`) now keeps results whose
+  `fileUrl` is a magnet OR a `.torrent` file URL. HTML details-page URLs are
+  still dropped (magnet-from-page scraping is a later tier).
+
+### Added
+
+- `POST /download` response now includes `torrent_hash`, the resolved BTIH
+  info-hash. For a magnet it is parsed from the URI; for a `.torrent` URL it is
+  read back from qBittorrent by diffing the tracked-torrent set before and after
+  the add (deterministic, equals qBittorrent's own hash, matches the completion
+  webhook `%I`). `None` if it could not be resolved; the completion webhook
+  backfills it.
+
 ## [1.3.3] - 2026-07-17
 
 ### Fixed

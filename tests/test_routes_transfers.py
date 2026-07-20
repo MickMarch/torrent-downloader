@@ -11,8 +11,8 @@ SHOW_MAGNET = "magnet:?xt=urn:btih:ABCDEF1234567890ABCDEF1234567890ABCDEF12&dn=S
 TMDB_ID = 27205
 
 
-def _download_body(magnet: str, media_type: str, **extra: object) -> dict[str, object]:
-    return {"magnet_uri": magnet, "media_type": media_type, "tmdb_id": TMDB_ID, **extra}
+def _download_body(source_url: str, media_type: str, **extra: object) -> dict[str, object]:
+    return {"source_url": source_url, "media_type": media_type, "tmdb_id": TMDB_ID, **extra}
 
 
 @pytest.fixture(autouse=True)
@@ -144,6 +144,108 @@ class TestDownloadCachesHashMetadata:
         from torrent_downloader.core.cache import app_cache
 
         assert app_cache.get("media_type:1234567890abcdef1234567890abcdef12345678") is None
+
+
+TORRENT_URL = "https://www.torlock.com/tor/1924049.torrent"
+READBACK_HASH = "fedcba0987654321fedcba0987654321fedcba09"
+
+
+def _torrent(hash_: str):
+    from types import SimpleNamespace
+
+    return SimpleNamespace(hash=hash_, get=lambda k, d=None: {"hash": hash_}.get(k, d))
+
+
+class TestDownloadTorrentFileUrl:
+    def test_torrent_url_passed_directly_to_torrents_add(
+        self, client: TestClient, mocker: MockerFixture
+    ) -> None:
+        mock_client = mocker.MagicMock()
+        # Snapshot diff: empty before, the new hash after.
+        mock_client.torrents_info.side_effect = [[], [_torrent(READBACK_HASH)]]
+        mocker.patch(
+            "torrent_downloader.routers.transfers.get_torrent_client", return_value=mock_client
+        )
+        mocker.patch("torrent_downloader.routers.transfers.is_vpn_bound", return_value=True)
+
+        client.post("/api/v1/download", json=_download_body(TORRENT_URL, "show"))
+
+        mock_client.torrents_add.assert_called_once_with(
+            urls=TORRENT_URL, save_path="F:\\Media\\Shows"
+        )
+
+    def test_readback_hash_used_as_cache_key(
+        self, client: TestClient, mocker: MockerFixture
+    ) -> None:
+        mock_client = mocker.MagicMock()
+        mock_client.torrents_info.side_effect = [[], [_torrent(READBACK_HASH)]]
+        mocker.patch(
+            "torrent_downloader.routers.transfers.get_torrent_client", return_value=mock_client
+        )
+        mocker.patch("torrent_downloader.routers.transfers.is_vpn_bound", return_value=True)
+
+        client.post("/api/v1/download", json=_download_body(TORRENT_URL, "show"))
+
+        from torrent_downloader.core.cache import app_cache
+
+        cached = app_cache.get(f"media_type:{READBACK_HASH}")
+        assert cached == {
+            "media_type": "show",
+            "host_path": "F:\\Media\\Shows",
+            "tmdb_id": TMDB_ID,
+        }
+
+    def test_response_carries_the_readback_hash(
+        self, client: TestClient, mocker: MockerFixture
+    ) -> None:
+        mock_client = mocker.MagicMock()
+        mock_client.torrents_info.side_effect = [[], [_torrent(READBACK_HASH)]]
+        mocker.patch(
+            "torrent_downloader.routers.transfers.get_torrent_client", return_value=mock_client
+        )
+        mocker.patch("torrent_downloader.routers.transfers.is_vpn_bound", return_value=True)
+
+        response = client.post("/api/v1/download", json=_download_body(TORRENT_URL, "show"))
+
+        assert response.json()["torrent_hash"] == READBACK_HASH
+
+    def test_empty_snapshot_diff_logs_and_skips_cache(
+        self, client: TestClient, mocker: MockerFixture
+    ) -> None:
+        mock_client = mocker.MagicMock()
+        # qB deduped an already-present torrent: no new hash appears.
+        existing = _torrent(READBACK_HASH)
+        mock_client.torrents_info.side_effect = [[existing], [existing]]
+        mocker.patch(
+            "torrent_downloader.routers.transfers.get_torrent_client", return_value=mock_client
+        )
+        mocker.patch("torrent_downloader.routers.transfers.is_vpn_bound", return_value=True)
+        mock_logger = mocker.patch("torrent_downloader.routers.transfers.app_logger")
+
+        response = client.post("/api/v1/download", json=_download_body(TORRENT_URL, "show"))
+
+        from torrent_downloader.core.cache import app_cache
+
+        assert app_cache.get(f"media_type:{READBACK_HASH}") is None
+        assert response.json()["torrent_hash"] is None
+        mock_logger.warning.assert_called_once()
+
+
+class TestMagnetResponseHash:
+    def test_magnet_response_carries_parsed_hash(
+        self, client: TestClient, mocker: MockerFixture
+    ) -> None:
+        mock_client = mocker.MagicMock()
+        mocker.patch(
+            "torrent_downloader.routers.transfers.get_torrent_client", return_value=mock_client
+        )
+        mocker.patch("torrent_downloader.routers.transfers.is_vpn_bound", return_value=True)
+
+        response = client.post("/api/v1/download", json=_download_body(MOVIE_MAGNET, "movie"))
+
+        assert response.json()["torrent_hash"] == "1234567890abcdef1234567890abcdef12345678"
+        # magnet path never needs a qB readback
+        mock_client.torrents_info.assert_not_called()
 
 
 class TestTransferInfoEndpoint:

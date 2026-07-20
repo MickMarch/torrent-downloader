@@ -18,6 +18,7 @@ from torrent_downloader.schemas.downloads import DownloadRequest, DownloadRespon
 from torrent_downloader.schemas.errors import ErrorResponse
 from torrent_downloader.schemas.transfers import TransferHashInfo, TransferInfoResponse
 from torrent_downloader.services.qbittorrent import (
+    MAGNET_URL_PREFIX,
     get_active_transfers,
     get_torrent_client,
     is_vpn_bound,
@@ -44,6 +45,26 @@ def _extract_hash(magnet_uri: str) -> str | None:
     return match.group(1).lower() if match else None
 
 
+def _snapshot_hashes(client: qbittorrentapi.Client) -> set[str]:
+    """Returns the set of info-hashes qBittorrent currently tracks (lowercased)."""
+    return {str(t.get("hash", "")).lower() for t in client.torrents_info(status_filter="all")}
+
+
+def _resolve_added_hash(client: qbittorrentapi.Client, before: set[str]) -> str | None:
+    """Identifies the just-added torrent's hash by diffing against a pre-add snapshot.
+
+    Deterministic under concurrent adds and equal to qBittorrent's own computed
+    info-hash (so it matches the completion webhook's ``%I``). Returns ``None``
+    when the diff is empty (qB deduped an already-present torrent, or the add
+    failed) or ambiguous (more than one new hash), leaving the completion webhook
+    to backfill.
+    """
+    new_hashes = _snapshot_hashes(client) - before
+    if len(new_hashes) == 1:
+        return next(iter(new_hashes))
+    return None
+
+
 def _resolve_host_path(media_type: MediaType) -> str:
     """Builds the host-side save path qBittorrent runs on. The container never
     sees this path on disk - it exists only on the host filesystem."""
@@ -61,12 +82,12 @@ def _resolve_host_path(media_type: MediaType) -> str:
     "/download",
     response_model=DownloadResponse,
     status_code=fastapi_status.HTTP_202_ACCEPTED,
-    summary="Submits a selected magnet URI to the qBittorrent daemon.",
+    summary="Submits a selected torrent source (magnet or .torrent URL) to qBittorrent.",
     responses=_QB_ERROR_RESPONSES,
 )
 @limiter.limit(RATE_LIMIT_DEFAULT)
 def api_trigger_download(request: Request, payload: DownloadRequest) -> DownloadResponse:
-    """Submit a magnet URI to the qBittorrent daemon, enforcing VPN binding beforehand."""
+    """Submit a torrent source (magnet or .torrent URL), enforcing VPN binding beforehand."""
     client: qbittorrentapi.Client | None = get_torrent_client()
     if not client:
         raise AppException(
@@ -90,15 +111,26 @@ def api_trigger_download(request: Request, payload: DownloadRequest) -> Download
             message=f"Dry run bypassed download. Target: {host_path}",
         )
 
+    is_magnet = payload.source_url.startswith(MAGNET_URL_PREFIX)
+    # For a magnet the hash is in the URI; for a .torrent URL it is only known
+    # after qBittorrent computes it, so snapshot the tracked hashes first and
+    # diff after the add.
+    pre_add_hashes = set() if is_magnet else _snapshot_hashes(client)
+
     try:
-        client.torrents_add(urls=payload.magnet_uri, save_path=host_path)
+        client.torrents_add(urls=payload.source_url, save_path=host_path)
     except Conflict409Error:
         return DownloadResponse(
             status="conflict",
             message="Torrent already exists in transfer list.",
         )
 
-    torrent_hash = _extract_hash(payload.magnet_uri)
+    torrent_hash = (
+        _extract_hash(payload.source_url)
+        if is_magnet
+        else _resolve_added_hash(client, pre_add_hashes)
+    )
+
     if torrent_hash:
         app_cache.set(
             f"{MEDIA_TYPE_CACHE_PREFIX}{torrent_hash}",
@@ -110,13 +142,15 @@ def api_trigger_download(request: Request, payload: DownloadRequest) -> Download
         )
     else:
         app_logger.warning(
-            f"Could not extract BTIH hash from magnet URI; media_type metadata not cached. "
-            f"Orchestrator lookup will 404 for this torrent. magnet_uri={payload.magnet_uri!r}"
+            "Could not resolve BTIH hash for source; media_type metadata not cached. "
+            "The completion webhook will backfill it. source_url=%r",
+            payload.source_url,
         )
 
     return DownloadResponse(
         status="success",
         message=f"Torrent added to queue. Save path: {host_path}",
+        torrent_hash=torrent_hash,
     )
 
 

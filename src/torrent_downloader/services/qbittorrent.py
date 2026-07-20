@@ -37,6 +37,9 @@ RES_GROUP_720: str = "720p"
 # for older/SD TV, e.g. HDTV/DVDRip rips) so they are never silently dropped.
 RES_GROUP_OTHER: str = "Other"
 
+MAGNET_URL_PREFIX: str = "magnet:?"
+TORRENT_FILE_SUFFIX: str = ".torrent"
+
 SEARCH_CATEGORY_MOVIES: str = "movies"
 SEARCH_CATEGORY_TV: str = "tv"
 SEARCH_CATEGORY_BY_MEDIA_TYPE: dict[MediaType, str] = {
@@ -254,8 +257,19 @@ def search_torrents(
     return parsed_results
 
 
+def is_addable_source(file_url: str) -> bool:
+    """True if the URL is something qBittorrent can add directly.
+
+    A magnet URI or an http ``.torrent`` file URL both add natively. HTML
+    details pages (which some plugins return in ``fileUrl``) are not addable
+    without scraping the magnet out of the page, so they are excluded here
+    (details-page scraping is a later tier).
+    """
+    return file_url.startswith(MAGNET_URL_PREFIX) or file_url.endswith(TORRENT_FILE_SUFFIX)
+
+
 def filter_and_sort_results(results: list[dict[str, Any]]) -> list[dict[str, Any]]:
-    """Filters by minimum seeders, enforces magnet links, and sorts by seed count descending."""
+    """Filters by minimum seeders, keeps addable sources, sorts by seeders descending."""
     filtered: list[dict[str, Any]] = []
 
     for res in results:
@@ -263,9 +277,8 @@ def filter_and_sort_results(results: list[dict[str, Any]]) -> list[dict[str, Any
         seed_count: int = res.get("nbSeeders", EMPTY_SEEDER_COUNT)
 
         has_enough_seeds: bool = seed_count >= config.minimum_seeders
-        is_magnet_link: bool = file_url.startswith("magnet:?")
 
-        if has_enough_seeds and is_magnet_link:
+        if has_enough_seeds and is_addable_source(file_url):
             filtered.append(res)
 
     filtered.sort(key=lambda x: x.get("nbSeeders", EMPTY_SEEDER_COUNT), reverse=True)

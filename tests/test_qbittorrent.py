@@ -24,9 +24,20 @@ class TestFilterAndSortResults:
         filtered = filter_and_sort_results(results)
         assert all(r["nbSeeders"] >= 10 for r in filtered)
 
-    def test_removes_results_without_magnet_link(self) -> None:
+    def test_keeps_magnet_and_torrent_file_urls(self) -> None:
+        # Tier A: a .torrent file URL is a valid source (qBittorrent fetches it);
+        # only HTML details pages are still dropped.
         results = [
-            make_result("no_magnet", 50, url="https://example.com/file.torrent"),
+            make_result("torrent_file", 50, url="https://www.torlock.com/tor/123.torrent"),
+            make_result("has_magnet", 50),
+        ]
+        filtered = filter_and_sort_results(results)
+        names = {r["fileName"] for r in filtered}
+        assert names == {"torrent_file", "has_magnet"}
+
+    def test_removes_html_details_page_urls(self) -> None:
+        results = [
+            make_result("details_page", 50, url="https://www.limetorrents.lol/x-torrent-1.html"),
             make_result("has_magnet", 50),
         ]
         filtered = filter_and_sort_results(results)
@@ -40,7 +51,8 @@ class TestFilterAndSortResults:
         assert seed_counts == sorted(seed_counts, reverse=True)
 
     def test_returns_empty_list_when_all_filtered(self) -> None:
-        results = [make_result("low", 1), make_result("no_magnet", 50, url="http://x.com")]
+        # low seeders + an HTML page (not a .torrent, not a magnet) -> both dropped.
+        results = [make_result("low", 1), make_result("html_page", 50, url="http://x.com/a.html")]
         assert filter_and_sort_results(results) == []
 
     def test_returns_empty_list_for_empty_input(self) -> None:
