@@ -7,6 +7,24 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- `VPN_INTERFACES` config: a comma-separated allowlist of network interface
+  names qBittorrent may be bound to, so any VPN provider can be used instead of
+  only NordLynx. Defaults to `NordLynx`, so existing deployments need no `.env`
+  change. The check stays fail-closed: an empty or unset allowlist rejects every
+  download rather than allowing any interface.
+- Unit tests for `is_vpn_bound`, which previously had no direct coverage (every
+  existing test stubbed it at the router boundary).
+
+### Changed
+
+- The VPN binding check now logs the interface actually in use on every check
+  (INFO on match, CRITICAL on mismatch).
+- The `VPN_NOT_BOUND` 403 detail now names the accepted interfaces. The bound
+  interface is deliberately kept out of the response and logged instead, since
+  on VPN drop it is often the host's real LAN adapter name.
+
 ## [1.5.0] - 2026-07-20
 
 ### Added

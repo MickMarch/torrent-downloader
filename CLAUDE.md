@@ -41,6 +41,7 @@ Optional (defaults shown):
 - `SEARCH_TIMEOUT_SECONDS=15`
 - `CACHE_DIRECTORY=.cache`, `CACHE_EXPIRATION_SECONDS=3600`
 - `TARGET_LANGUAGE=en`
+- `VPN_INTERFACES=NordLynx` — comma-separated allowlist of interface names qBittorrent may be bound to. Fail-closed: empty rejects every download, never "allow any".
 
 ## Architecture
 
@@ -59,7 +60,9 @@ FastAPI REST API wrapping two external integrations: qBittorrent (torrent client
 
 **Error handling:** `core/errors.py` defines `ErrorCode` enum and `AppException`. All structured errors use shape `{"status": "error", "code": "<ErrorCode>", "detail": "..."}`. Exception handlers registered in `main.py` for `AppException`, `RequestValidationError`, and `RateLimitExceeded`. `schemas/errors.py` holds `ErrorResponse` Pydantic model used in `responses=` on route decorators for OpenAPI documentation.
 
-**VPN enforcement:** Every download request verifies qBittorrent is bound to `NordLynx` interface via `is_vpn_bound()`. Health check also exposes this status. Blocks if wrong interface.
+**VPN enforcement:** Every download request verifies qBittorrent is bound to one of the interfaces in the `VPN_INTERFACES` allowlist via `is_vpn_bound()` (case-insensitive; `matches_vpn_allowlist()` holds the pure compare). Health check also exposes this status as a bool. Blocks if the bound interface is not listed.
+
+Fail-closed by design: an empty or unset allowlist rejects every download, and never means "allow any". `is_vpn_bound(client, [])` denies rather than falling back to config - the fallback checks `is not None`, not truthiness, so an explicit empty list cannot become a bypass. The bound interface name is logged (INFO on match, CRITICAL on mismatch) but deliberately kept out of the 403 body and off `/health`, since `/health` is public and the bound name on VPN drop is often the host's real LAN adapter.
 
 **Caching:** `diskcache.Cache` (`app_cache`) used in two places — TMDB results via `@app_cache.memoize()` decorator, torrent search results via explicit `app_cache.get/set`. Both respect `CACHE_EXPIRATION_SECONDS`.
 

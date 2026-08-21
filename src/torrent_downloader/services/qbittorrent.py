@@ -1,6 +1,7 @@
 """qBittorrent Web API client: connection, transfer management, and plugin-based search."""
 
 import time
+from collections.abc import Sequence
 from typing import Any
 
 import PTN
@@ -21,6 +22,9 @@ DEFAULT_ETA_SECONDS: int = 0
 DEFAULT_HASH: str = ""
 DEFAULT_STATE: str = ""
 DEFAULT_SAVE_PATH: str = ""
+
+VPN_INTERFACE_PREFERENCE_KEY: str = "current_interface_name"
+NO_INTERFACES_CONFIGURED: str = "<none configured>"
 
 SEARCH_COMPLETION_STATUS: str = "Stopped"
 POLL_INTERVAL_SECONDS: float = 1.0
@@ -100,21 +104,54 @@ def stop_seeding_transfers(client: qbittorrentapi.Client) -> None:
         app_logger.info(f"Succesfully stopped torrent:{torrent.get('name', '')}")
 
 
-def is_vpn_bound(client: qbittorrentapi.Client, expected_interface: str = "NordLynx") -> bool:
+def matches_vpn_allowlist(current_interface: str, allowlist: Sequence[str]) -> bool:
     """
-    Verifies that qBittorrent is strictly bound to the VPN network interface.
+    Case-insensitive membership test for a bound interface against the allowlist.
+
+    An empty allowlist matches nothing: an unconfigured allowlist must never be
+    read as "allow any interface".
+    """
+    if not allowlist:
+        return False
+
+    normalized: str = current_interface.strip().lower()
+    if not normalized:
+        return False
+
+    return normalized in {name.strip().lower() for name in allowlist}
+
+
+def is_vpn_bound(
+    client: qbittorrentapi.Client,
+    accepted_interfaces: Sequence[str] | None = None,
+) -> bool:
+    """
+    Verifies that qBittorrent is bound to one of the accepted VPN interfaces.
     This guarantees traffic halts if the VPN drops, bypassing the need for host OS process checks.
+
+    Falls back to the configured allowlist when accepted_interfaces is omitted.
+    Passing an empty sequence denies every interface rather than falling back.
     """
+    allowlist: tuple[str, ...] = (
+        tuple(accepted_interfaces)
+        if accepted_interfaces is not None
+        else config.vpn_interface_allowlist
+    )
+
     try:
         preferences: dict[str, Any] = client.app_preferences()
-        current_interface: str = str(preferences.get("current_interface_name", ""))
+        current_interface: str = str(preferences.get(VPN_INTERFACE_PREFERENCE_KEY, ""))
 
-        if current_interface.lower() == expected_interface.lower():
+        if matches_vpn_allowlist(current_interface, allowlist):
+            app_logger.info(
+                f"VPN check passed. qBittorrent is bound to '{current_interface}' "
+                f"(accepted: {', '.join(allowlist)})."
+            )
             return True
 
         app_logger.critical(
-            f"SECURITY ALERT: qBittorrent is bound to '{current_interface}', "
-            f"but requires '{expected_interface}'. Download rejected."
+            f"SECURITY ALERT: qBittorrent is bound to '{current_interface}', but requires "
+            f"one of: {', '.join(allowlist) or NO_INTERFACES_CONFIGURED}. Download rejected."
         )
         return False
     except Exception as e:

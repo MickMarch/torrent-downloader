@@ -18,6 +18,7 @@ from torrent_downloader.schemas.downloads import DownloadRequest, DownloadRespon
 from torrent_downloader.schemas.errors import ErrorResponse
 from torrent_downloader.schemas.transfers import TransferHashInfo, TransferInfoResponse
 from torrent_downloader.services.qbittorrent import (
+    NO_INTERFACES_CONFIGURED,
     get_active_transfers,
     get_torrent_client,
     is_vpn_bound,
@@ -101,10 +102,13 @@ def api_trigger_download(request: Request, payload: DownloadRequest) -> Download
         )
 
     if not is_vpn_bound(client):
+        # The bound interface is deliberately omitted: on VPN drop it is often the
+        # real LAN adapter name, and this detail reaches the client. It is logged.
+        accepted = ", ".join(config.vpn_interface_allowlist) or NO_INTERFACES_CONFIGURED
         raise AppException(
             status_code=fastapi_status.HTTP_403_FORBIDDEN,
             code=ErrorCode.VPN_NOT_BOUND,
-            detail="qBittorrent is not bound to the required VPN interface.",
+            detail=f"qBittorrent is not bound to an accepted VPN interface. Accepted: {accepted}.",
         )
 
     host_path = _resolve_host_path(payload.media_type)
