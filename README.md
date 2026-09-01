@@ -12,7 +12,7 @@ A FastAPI microservice that wraps qBittorrent and TMDB. Exposes a REST API for s
 2. Open **Tools → Preferences → Web UI** and enable the Web UI.
 3. Set a port (default: `8080`) and note the host (`127.0.0.1` for local).
 4. Under **Web UI → Authentication**, generate or set an API key and copy it.
-5. Under **Tools → Preferences → Advanced → Network interface**, bind qBittorrent to your VPN interface (e.g. `NordLynx`). The API will reject downloads if this binding is absent.
+5. Under **Tools → Preferences → Advanced → Network interface**, bind qBittorrent to your VPN interface (e.g. `NordLynx`), then set `VPN_INTERFACES` in `.env` to that same name. Any VPN provider works; list several comma-separated if you switch between them. The API rejects downloads unless the bound interface matches an entry, and an empty list rejects everything.
 6. Ensure the qBittorrent search plugin system is enabled and at least one search plugin is installed (**View → Search Engine → Search plugins**).
 
 ### TMDB
