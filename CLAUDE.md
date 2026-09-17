@@ -1,157 +1,83 @@
-# CLAUDE.md
+# CLAUDE.md - torrent-downloader
 
-This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
+Workspace rules, conventions, standards and workflow live in the root
+[`medialab/CLAUDE.md`](../CLAUDE.md); it is the authority when anything here
+disagrees. This file holds only what is specific to this code.
 
 ## Commands
 
 ```bash
-# Install dependencies
 uv sync --dev
-
-# Run API (production)
-uv run torrent-downloader
-
-# Run API (dev, hot-reload)
-uv run torrent-downloader-dev
-
-# Run all tests
+uv run torrent-downloader        # production
+uv run torrent-downloader-dev    # dev, hot-reload
 uv run pytest
-
-# Run single test
 uv run pytest tests/test_middleware.py::TestRequestIdHeader::test_response_includes_request_id
 ```
 
-## Environment Setup
+## Config
 
-Copy `.env.example` to `.env` and populate. All config loads via `pydantic-settings` from `.env`.
+`.env.example` is the authoritative variable list; `core/config.py` holds the
+defaults. Every field is optional at import time (CI has no `.env`) and
+required at runtime. Two fields need context:
 
-All fields are optional at import time (for CI compatibility), but the service will not function correctly without real values at runtime.
-
-- `QB_API_KEY` — qBittorrent Web UI API key
-- `TMDB_API_KEY` — TMDB v3 API key
-- `API_KEY` — static key required in `X-API-Key` header on all protected endpoints
-
-Required (v1.1+):
-- `MEDIA_HOST_PATH` — host-side base path (e.g. `F:\Media`) where qBittorrent saves downloads. qBittorrent runs on the host, not in this container, so `save_path` sent to its API must always be a host path even when torrent-downloader itself runs containerized. The app appends `\Movies` or `\Shows` based on the request's `media_type`.
-
-Optional (defaults shown):
-- `QB_HOST=127.0.0.1`, `QB_PORT=8080`
-- `API_HOST=0.0.0.0`, `API_PORT=8000`
-- `MINIMUM_SEEDERS=10`
-- `SEARCH_TIMEOUT_SECONDS=15`
-- `CACHE_DIRECTORY=.cache`, `CACHE_EXPIRATION_SECONDS=3600`
-- `TARGET_LANGUAGE=en`
-- `VPN_INTERFACES=NordLynx` — comma-separated allowlist of interface names qBittorrent may be bound to. Fail-closed: empty rejects every download, never "allow any".
+- `MEDIA_HOST_PATH` is a **host** path even when this service runs in a
+  container: `save_path` is sent to host-installed qBittorrent's API, never
+  used locally. The app appends the media-type subdir (`Movies` / `Shows`).
+- `VPN_INTERFACES` is a fail-closed allowlist. Empty rejects every download and
+  never means "allow any". `is_vpn_bound(client, [])` denies rather than falling
+  back to config (the fallback checks `is not None`, not truthiness).
 
 ## Architecture
 
-FastAPI REST API wrapping two external integrations: qBittorrent (torrent client) and TMDB (metadata).
+FastAPI REST API wrapping qBittorrent (torrent client) and TMDB (metadata).
+Endpoint table: [README](README.md).
 
-**Request flow for a download:**
-1. Client calls `GET /api/v1/search/tmdb?query=...` → TMDB lookup returns movie/show metadata
-2. Client calls `GET /api/v1/search/torrents?query=...&media_type=...` → qBittorrent plugin search (category from `media_type`), results grouped by resolution (4K/1080p/720p). For shows, optional `season`/`episode` refine the search pattern (`S0N`/`S0NE0M`) and strictly filter results to the requested season.
-3. Client calls `POST /api/v1/download` with a selected `source_url` → VPN binding enforced before add. `source_url` is one of three shapes (classified in `services/source.py`): a magnet (added directly, hash from the URI), an http `.torrent` file URL (added directly, hash read back via snapshot diff), or an http HTML details page (magnet scraped from the page, then added as a magnet; 422 if unscrapeable). The resolved info-hash is returned as `torrent_hash`.
+**Download flow:** `GET /search/tmdb` (TMDB) -> `GET /search/torrents`
+(qBittorrent plugin search, category from `media_type`, grouped by
+resolution; shows accept `season`/`episode`) -> `POST /download` with a
+`source_url`. `services/source.py` classifies the source: magnet (hash from
+the URI), `.torrent` file URL (hash read back by snapshot diff of
+`torrents_info()` before/after add), or HTML details page (magnet scraped
+from the page; 422 if none). VPN binding is enforced before every add. The
+resolved info-hash is returned as `torrent_hash` and `{media_type, host_path,
+tmdb_id}` is cached against it for the orchestrator's
+`GET /transfers/{hash}/info` at completion time.
 
-**Auth:** All endpoints except `/api/v1/health` require `X-API-Key: <API_KEY>`. Implemented in `core/auth.py` via FastAPI `Security(APIKeyHeader)`. Missing key → 403 with `UNAUTHORIZED` code. Wrong key → 403 with `UNAUTHORIZED` code. Applied via `dependencies=[Depends(verify_api_key)]` on `include_router` calls in `main.py`; system routes apply it per-route so `/health` stays public.
+**Search pipeline:** `search_torrents` (scope-aware pattern + cache key,
+category from `media_type`) -> `execute_plugin_search` -> `filter_and_sort_results`
+(drop below min seeders, keep any addable source, sort by seeders) ->
+`filter_by_scope` (season/episode scopes only: PTN parse, keep matches, keep
+range/complete packs as ranked-below fallbacks) -> `group_by_resolution`
+(4K/1080p/720p/Other). Search uses qBittorrent's built-in plugin system,
+async-polled with a timeout; hanging plugins are stopped explicitly.
 
-**Rate limiting:** `slowapi` limiter in `core/limiter.py`. General endpoints: `RATE_LIMIT_DEFAULT` (60/min). Search endpoints: `RATE_LIMIT_SEARCH` (20/min). `/health` exempt via `@limiter.exempt`. Applied via `@limiter.limit(RATE_LIMIT_*)` decorator on each route handler. Breach returns 429 with `Retry-After` header and `RATE_LIMITED` error code. Limiter storage must be reset between tests - see `reset_rate_limiter` fixture in `conftest.py`.
+**Cross-cutting:** `X-API-Key` via `Security(APIKeyHeader)` in `core/auth.py`,
+applied on `include_router` (system routes per-route so `/health` stays
+public). `slowapi` limits in `core/limiter.py` (`RATE_LIMIT_DEFAULT`,
+`RATE_LIMIT_SEARCH`), `/health` exempt. `RequestLoggingMiddleware` adds
+`X-Request-ID`. Errors are `AppException` + `ErrorCode` (extends the contracts
+`CommonErrorCode`). `diskcache` for TMDB (`@app_cache.memoize`) and search
+results (explicit get/set). The bound VPN interface name is logged but kept out
+of the 403 body and `/health` (public; on VPN drop it is often the LAN adapter).
 
-**Request logging:** `core/middleware.py` - `RequestLoggingMiddleware` logs method, path+query, status, duration on every request. Injects `X-Request-ID` UUID response header per request for cross-service correlation.
+## Module layout
 
-**Error handling:** `core/errors.py` defines `ErrorCode` enum and `AppException`. All structured errors use shape `{"status": "error", "code": "<ErrorCode>", "detail": "..."}`. Exception handlers registered in `main.py` for `AppException`, `RequestValidationError`, and `RateLimitExceeded`. `schemas/errors.py` holds `ErrorResponse` Pydantic model used in `responses=` on route decorators for OpenAPI documentation.
-
-**VPN enforcement:** Every download request verifies qBittorrent is bound to one of the interfaces in the `VPN_INTERFACES` allowlist via `is_vpn_bound()` (case-insensitive; `matches_vpn_allowlist()` holds the pure compare). Health check also exposes this status as a bool. Blocks if the bound interface is not listed.
-
-Fail-closed by design: an empty or unset allowlist rejects every download, and never means "allow any". `is_vpn_bound(client, [])` denies rather than falling back to config - the fallback checks `is not None`, not truthiness, so an explicit empty list cannot become a bypass. The bound interface name is logged (INFO on match, CRITICAL on mismatch) but deliberately kept out of the 403 body and off `/health`, since `/health` is public and the bound name on VPN drop is often the host's real LAN adapter.
-
-**Caching:** `diskcache.Cache` (`app_cache`) used in two places — TMDB results via `@app_cache.memoize()` decorator, torrent search results via explicit `app_cache.get/set`. Both respect `CACHE_EXPIRATION_SECONDS`.
-
-**Module layout:**
-- `core/config.py` — single `AppConfig` pydantic-settings instance (`config`) imported everywhere
-- `core/auth.py` — `verify_api_key` FastAPI dependency; patch `torrent_downloader.core.auth.config` in tests
-- `core/limiter.py` — `limiter` slowapi instance, `RATE_LIMIT_DEFAULT`, `RATE_LIMIT_SEARCH` constants
-- `core/middleware.py` — `RequestLoggingMiddleware` (BaseHTTPMiddleware)
-- `core/cache.py` — single `app_cache` diskcache instance
-- `core/logger.py` — `app_logger` singleton; stdout only (no file handler - correct for containers)
-- `core/errors.py` — `ErrorCode` enum, `AppException`
-- `services/qbittorrent.py` — all qBittorrent logic: client init, search (with timeout polling), filter/sort/group, transfers, VPN check
-- `services/tmdb.py` — TMDB search + field extractors
-- `services/source.py` — source-URL classification (magnet / `.torrent` file / HTML page) + magnet scraping from a details page
-- `schemas/` — Pydantic models for request/response validation; `errors.py` holds shared `ErrorResponse`
-- `routers/` — APIRouter modules grouped by domain (`system`, `search`, `transfers`); registered in `main.py` via `include_router` with `prefix="/api/v1"`
-- `main.py` — FastAPI app instantiation, middleware stack, exception handlers, router registration, custom OpenAPI schema, uvicorn entrypoints
-
-**Search result pipeline:** `search_torrents` (builds the scope-aware pattern + cache key, picks the plugin category from `media_type`) → `execute_plugin_search` (raw qBittorrent plugin results) → `filter_and_sort_results` (drop below min seeders, keep addable sources - any magnet or http URL: magnet, `.torrent` file, or HTML details page, sort desc by seeders) → `filter_by_scope` (for a season/episode scope, PTN parse filename → keep primary season/episode matches, keep range/complete-series packs as ranked-below fallbacks, drop the rest) → `group_by_resolution` (PTN parse filename → bucket into 4K/1080p/720p). Movie and whole-series scopes skip `filter_by_scope`.
-
-**Torrent search uses qBittorrent's built-in search plugin system** (not a direct tracker API). Search is async-polled with a configurable timeout; hanging plugins are stopped explicitly.
-
-**OpenAPI:** Custom `openapi()` override in `main.py` sets `/health` security to `[]` (no auth required). All other routes inherit `APIKeyHeader` security scheme auto-generated from the `Security(APIKeyHeader)` dependency. Error response shapes declared via `responses=` on each route using `ErrorResponse` schema.
-
-## v1.1 spec (feat/v1.1-media-type-paths - implemented)
-
-### Goal
-
-Remove `save_path` from the download request. Caller passes `media_type` instead;
-torrent-downloader resolves the host-side save path from config and stores
-`hash -> (media_type, host_path)` in diskcache so the orchestrator can retrieve
-it at torrent completion time.
-
-### Why host path, not container path
-
-qBittorrent runs on the host machine, never inside this container. `save_path`
-passed to `torrents_add()` is consumed by qBittorrent's own filesystem, so it
-must always be a host-side path - even when torrent-downloader itself runs in
-Docker. torrent-downloader does not read or write the media directories itself,
-so there is no separate container-side path to track.
-
-### Changes
-
-**`core/config.py`** — single required field:
-- `media_host_path: str` — host-side base path (e.g. `F:\Media`), no default
-
-**`schemas/downloads.py`** — replaced `save_path: str` with `media_type: MediaType`
-(`MediaType = Literal["movie", "show"]`). `dry_run` stays.
-
-**`routers/transfers.py`** — `_resolve_host_path(media_type)` joins
-`config.media_host_path` with `MEDIA_TYPE_SUBDIRS[media_type]` (`{"movie": "Movies", "show": "Shows"}`)
-using a literal backslash join (host paths are Windows paths regardless of the
-container's OS). `POST /download` passes this to `torrents_add(save_path=...)`.
-After successful add, caches:
-```python
-app_cache.set(f"media_type:{torrent_hash}", {"media_type": payload.media_type, "host_path": host_path})
 ```
-`torrent_hash` is extracted from the magnet URI (qBittorrent's `torrents_add()`
-does not return it directly) via `MAGNET_HASH_PATTERN` regex on
-`xt=urn:btih:([a-fA-F0-9]{40}|[a-zA-Z2-7]{32})`, normalised to lowercase.
-
-**`GET /api/v1/transfers/{hash}/info`** — orchestrator calls this after
-receiving the qBittorrent completion webhook. Returns:
-```json
-{ "media_type": "movie", "host_path": "F:\\Media\\Movies" }
+src/torrent_downloader/
+├── core/        config, auth, limiter, middleware, cache, logger, errors, constants,
+│                settings_manager (runtime env updates, no route yet)
+├── services/    qbittorrent (client, search, filter/sort/group, transfers, VPN check),
+│                tmdb, source (source-URL classification + magnet scraping), storage
+├── schemas/     request/response models; errors re-exports contracts ErrorResponse
+├── routers/     system, search, transfers (registered in main.py under /api/v1)
+└── main.py      app, middleware, exception handlers, custom OpenAPI (/health unauthenticated)
 ```
-Reads from diskcache (hash lookup is case-insensitive). Returns 404 with
-`TRANSFER_NOT_FOUND` if hash unknown (e.g. download predates v1.1 or cache evicted).
-
-**`core/errors.py`** — added `TRANSFER_NOT_FOUND`.
-
-**`.env.example`** — `MEDIA_HOST_PATH` with host-vs-container rationale.
-
-### Path returned to orchestrator
-
-`host_path` in the response is the media type's root dir (e.g. `F:\Media\Movies`),
-not the individual torrent's subfolder. The orchestrator appends the torrent name
-(`%N` from qBittorrent's completion script) to build the full item path for
-`POST /library/paths`.
-
-## Versioning
-
-Version is derived from git tags via `hatch-vcs` - do not hardcode it anywhere. `src/torrent_downloader/_version.py` is generated at build time and is gitignored. To release a new version: merge to main, tag (`git tag -a vX.Y.Z -m "vX.Y.Z"`), push the tag (`git push origin vX.Y.Z`), create a GitHub Release from the tag, update `CHANGELOG.md` before tagging.
 
 ## Testing patterns
 
-- Always use `uv run pytest`, never `python -m pytest`
-- Always pytest style, never unittest
-- `conftest.py` has two `autouse=True` fixtures: `patch_api_key` (mocks auth config) and `reset_rate_limiter` (clears limiter storage between tests)
-- `client` fixture sends `X-API-Key` header by default; use `unauthed_client` fixture for auth rejection tests
-- Mock `torrent_downloader.core.auth.config` (not `core.config`) when patching auth
-- Mock `torrent_downloader.core.middleware.app_logger` when asserting on log output
+- `conftest.py` autouse fixtures: `patch_api_key` (mocks auth config) and
+  `reset_rate_limiter` (clears limiter storage between tests).
+- `client` fixture sends `X-API-Key`; `unauthed_client` for rejection tests.
+- Patch `torrent_downloader.core.auth.config` (not `core.config`) for auth;
+  patch `torrent_downloader.core.middleware.app_logger` for log assertions.
+- qBittorrent and TMDB are mocked at the service boundary. Nothing live.
