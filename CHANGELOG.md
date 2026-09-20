@@ -15,6 +15,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   pushed tag (shared `release.yml`).
 - Dependabot updates arrive grouped, one PR per ecosystem.
 
+### Fixed
+
+- `.env.example` now lists `API_KEY` (the callee-side inter-service key) and
+  documents the `Shows` subdir (was `TV`); `API_HOST` default matches the code.
+
 ## [1.6.0] - 2026-09-01
 
 ### Added
