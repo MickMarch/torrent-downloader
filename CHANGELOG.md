@@ -7,6 +7,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed
+
+- CI calls the workspace's shared reusable workflow (`MickMarch/medialab`
+  `python-ci.yml`) instead of carrying its own copy of the quality gate.
+- Releases publish automatically from the CHANGELOG section matching the
+  pushed tag (shared `release.yml`).
+- Dependabot updates arrive grouped, one PR per ecosystem.
+
 ## [1.6.0] - 2026-09-01
 
 ### Added
