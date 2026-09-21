@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.7.0] - 2026-09-21
+
 ### Changed
 
 - Imports `API_PREFIX`, `API_KEY_HEADER`, `HEALTH_PATH` and `MEDIA_TYPE_SUBDIRS`
