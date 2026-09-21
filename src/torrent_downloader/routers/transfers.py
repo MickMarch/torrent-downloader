@@ -5,7 +5,7 @@ import re
 import qbittorrentapi
 from fastapi import APIRouter, Request
 from fastapi import status as fastapi_status
-from medialab_contracts import MediaType
+from medialab_contracts import MEDIA_TYPE_SUBDIRS, MediaType
 from qbittorrentapi.exceptions import Conflict409Error
 
 from torrent_downloader.core.cache import app_cache
@@ -34,7 +34,6 @@ router = APIRouter(tags=[TAG_TRANSFERS])
 
 MAGNET_HASH_PATTERN = re.compile(r"xt=urn:btih:([a-fA-F0-9]{40}|[a-zA-Z2-7]{32})")
 MEDIA_TYPE_CACHE_PREFIX = "media_type:"
-MEDIA_TYPE_SUBDIRS = {MediaType.MOVIE: "Movies", MediaType.SHOW: "Shows"}
 
 
 _QB_ERROR_RESPONSES = {

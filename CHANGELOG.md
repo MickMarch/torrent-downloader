@@ -9,6 +9,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- Imports `API_PREFIX`, `API_KEY_HEADER`, `HEALTH_PATH` and `MEDIA_TYPE_SUBDIRS`
+  from medialab-contracts v0.4.0 instead of declaring them locally. Wire values
+  unchanged.
+
+### Changed
+
 - CI calls the workspace's shared reusable workflow (`MickMarch/medialab`
   `python-ci.yml`) instead of carrying its own copy of the quality gate.
 - Releases publish automatically from the CHANGELOG section matching the
