@@ -7,6 +7,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- `DELETE /api/v1/transfers/{hash}?delete_files=true` also deletes the
+  torrent's data (default `false`, files kept as before).
+
 ## [1.10.0] - 2026-09-25
 
 ### Added

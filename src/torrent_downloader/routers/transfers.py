@@ -262,19 +262,22 @@ def api_resume_transfer(request: Request, torrent_hash: str) -> DownloadResponse
     "/transfers/{torrent_hash}",
     response_model=DownloadResponse,
     status_code=fastapi_status.HTTP_202_ACCEPTED,
-    summary="Remove one torrent from qBittorrent, keeping its files.",
+    summary="Remove one torrent from qBittorrent; delete its files only with delete_files=true.",
     responses={
         404: {"model": ErrorResponse, "description": "No torrent with this hash."},
         **_QB_ERROR_RESPONSES,
     },
 )
 @limiter.limit(RATE_LIMIT_DEFAULT)
-def api_remove_transfer(request: Request, torrent_hash: str) -> DownloadResponse:
-    """Drop qBittorrent's handle on a finished download. Files are never deleted."""
+def api_remove_transfer(
+    request: Request, torrent_hash: str, delete_files: bool = False
+) -> DownloadResponse:
+    """Drop qBittorrent's handle on a download; with ``delete_files`` also its data."""
     client = _require_transfer(torrent_hash)
-    remove_transfer(client, torrent_hash)
+    remove_transfer(client, torrent_hash, delete_files=delete_files)
+    outcome = "files deleted" if delete_files else "files kept"
     return DownloadResponse(
-        status="success", message="Transfer removed; files kept.", torrent_hash=torrent_hash.lower()
+        status="success", message=f"Transfer removed; {outcome}.", torrent_hash=torrent_hash.lower()
     )
 
 
