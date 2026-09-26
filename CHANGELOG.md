@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed
+
+- Downloads are saved under `MEDIA_HOST_PATH\_incoming\<Movies|Shows>`
+  (contracts `STAGING_SUBDIR`) instead of directly in the library folders,
+  so Jellyfin never indexes a raw release. The orchestrator places them.
+
 ## [1.11.0] - 2026-09-26
 
 ### Added

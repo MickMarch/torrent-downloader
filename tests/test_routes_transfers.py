@@ -42,7 +42,7 @@ class TestDownloadResolvesHostPath:
         client.post("/api/v1/download", json=_download_body(MOVIE_MAGNET, "movie"))
 
         mock_client.torrents_add.assert_called_once_with(
-            urls=MOVIE_MAGNET, save_path="F:\\Media\\Movies"
+            urls=MOVIE_MAGNET, save_path="F:\\Media\\_incoming\\Movies"
         )
 
     def test_show_media_type_appends_shows_subdir(
@@ -57,7 +57,7 @@ class TestDownloadResolvesHostPath:
         client.post("/api/v1/download", json=_download_body(SHOW_MAGNET, "show"))
 
         mock_client.torrents_add.assert_called_once_with(
-            urls=SHOW_MAGNET, save_path="F:\\Media\\Shows"
+            urls=SHOW_MAGNET, save_path="F:\\Media\\_incoming\\Shows"
         )
 
     def test_dry_run_does_not_call_torrents_add(
@@ -94,7 +94,7 @@ class TestDownloadCachesHashMetadata:
         cached = app_cache.get("media_type:1234567890abcdef1234567890abcdef12345678")
         assert cached == {
             "media_type": "movie",
-            "host_path": "F:\\Media\\Movies",
+            "host_path": "F:\\Media\\_incoming\\Movies",
             "tmdb_id": TMDB_ID,
         }
 
@@ -114,7 +114,7 @@ class TestDownloadCachesHashMetadata:
         cached = app_cache.get("media_type:abcdef1234567890abcdef1234567890abcdef12")
         assert cached == {
             "media_type": "show",
-            "host_path": "F:\\Media\\Shows",
+            "host_path": "F:\\Media\\_incoming\\Shows",
             "tmdb_id": TMDB_ID,
         }
 
@@ -171,7 +171,7 @@ class TestDownloadTorrentFileUrl:
         client.post("/api/v1/download", json=_download_body(TORRENT_URL, "show"))
 
         mock_client.torrents_add.assert_called_once_with(
-            urls=TORRENT_URL, save_path="F:\\Media\\Shows"
+            urls=TORRENT_URL, save_path="F:\\Media\\_incoming\\Shows"
         )
 
     def test_readback_hash_used_as_cache_key(
@@ -191,7 +191,7 @@ class TestDownloadTorrentFileUrl:
         cached = app_cache.get(f"media_type:{READBACK_HASH}")
         assert cached == {
             "media_type": "show",
-            "host_path": "F:\\Media\\Shows",
+            "host_path": "F:\\Media\\_incoming\\Shows",
             "tmdb_id": TMDB_ID,
         }
 
@@ -252,7 +252,7 @@ class TestDownloadHtmlPageUrl:
 
         # The scraped magnet is what gets added - never the HTML page URL.
         mock_client.torrents_add.assert_called_once_with(
-            urls=SCRAPED_MAGNET, save_path="F:\\Media\\Shows"
+            urls=SCRAPED_MAGNET, save_path="F:\\Media\\_incoming\\Shows"
         )
 
     def test_hash_parsed_from_scraped_magnet(
@@ -317,7 +317,11 @@ class TestTransferInfoEndpoint:
 
         app_cache.set(
             "media_type:abc123",
-            {"media_type": "movie", "host_path": "F:\\Media\\Movies", "tmdb_id": TMDB_ID},
+            {
+                "media_type": "movie",
+                "host_path": "F:\\Media\\_incoming\\Movies",
+                "tmdb_id": TMDB_ID,
+            },
         )
 
         response = client.get("/api/v1/transfers/abc123/info")
@@ -325,7 +329,7 @@ class TestTransferInfoEndpoint:
         assert response.status_code == 200
         body = response.json()
         assert body["media_type"] == "movie"
-        assert body["host_path"] == "F:\\Media\\Movies"
+        assert body["host_path"] == "F:\\Media\\_incoming\\Movies"
         assert body["tmdb_id"] == TMDB_ID
         assert set(body.keys()) == {"media_type", "host_path", "tmdb_id"}
 
@@ -342,7 +346,7 @@ class TestTransferInfoEndpoint:
 
         app_cache.set(
             "media_type:abc123",
-            {"media_type": "show", "host_path": "F:\\Media\\Shows", "tmdb_id": TMDB_ID},
+            {"media_type": "show", "host_path": "F:\\Media\\_incoming\\Shows", "tmdb_id": TMDB_ID},
         )
 
         response = client.get("/api/v1/transfers/ABC123/info")
@@ -416,3 +420,15 @@ class TestTransfersContentPath:
         mocker.patch("torrent_downloader.routers.transfers.get_torrent_client", return_value=qb)
         body = client.get("/api/v1/transfers").json()
         assert body["data"][0]["content_path"].endswith("[5.1]")
+
+
+class TestStagingSavePath:
+    def test_downloads_land_under_the_staging_subdir(self, mocker):
+        from medialab_contracts import MEDIA_TYPE_SUBDIRS, STAGING_SUBDIR, MediaType
+
+        from torrent_downloader.routers.transfers import _resolve_host_path
+
+        mocker.patch("torrent_downloader.routers.transfers.config.media_host_path", "F:\Media")
+        for media_type in MediaType:
+            path = _resolve_host_path(media_type)
+            assert path == "F:\\Media\\" + STAGING_SUBDIR + "\\" + MEDIA_TYPE_SUBDIRS[media_type]

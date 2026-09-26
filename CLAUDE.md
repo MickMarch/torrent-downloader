@@ -22,7 +22,9 @@ required at runtime. Two fields need context:
 
 - `MEDIA_HOST_PATH` is a **host** path even when this service runs in a
   container: `save_path` is sent to host-installed qBittorrent's API, never
-  used locally. The app appends the media-type subdir (`Movies` / `Shows`).
+  used locally. The app appends the staging subdir and the media-type subdir
+  (`_incoming\Movies` / `_incoming\Shows`); the orchestrator moves finished
+  downloads into the library roots.
 - `VPN_INTERFACES` is a fail-closed allowlist. Empty rejects every download and
   never means "allow any". `is_vpn_bound(client, [])` denies rather than falling
   back to config (the fallback checks `is not None`, not truthiness).

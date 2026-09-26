@@ -5,7 +5,7 @@ import re
 import qbittorrentapi
 from fastapi import APIRouter, Request
 from fastapi import status as fastapi_status
-from medialab_contracts import MEDIA_TYPE_SUBDIRS, MediaType
+from medialab_contracts import MEDIA_TYPE_SUBDIRS, STAGING_SUBDIR, MediaType
 from qbittorrentapi.exceptions import Conflict409Error
 
 from torrent_downloader.core.cache import app_cache
@@ -82,7 +82,10 @@ def _resolve_host_path(media_type: MediaType) -> str:
             detail="MEDIA_HOST_PATH is not configured.",
         )
     base = config.media_host_path.rstrip("\\/")
-    return f"{base}\\{MEDIA_TYPE_SUBDIRS[media_type]}"
+    # Downloads land in the staging subdir, beside the Jellyfin library roots,
+    # so Jellyfin never indexes a raw release; the orchestrator renames into
+    # the library on completion.
+    return f"{base}\\{STAGING_SUBDIR}\\{MEDIA_TYPE_SUBDIRS[media_type]}"
 
 
 @router.post(
