@@ -349,3 +349,41 @@ class TestTransferInfoEndpoint:
 
         assert response.status_code == 200
         assert response.json()["media_type"] == "show"
+
+
+class TestPerHashActions:
+    def _client(self, mocker, *, known: bool):
+        qb = mocker.MagicMock()
+        qb.torrents_info.return_value = [{"hash": "abc123"}] if known else []
+        mocker.patch("torrent_downloader.routers.transfers.get_torrent_client", return_value=qb)
+        return qb
+
+    def test_resume_calls_qbittorrent_for_that_hash(self, client, mocker):
+        qb = self._client(mocker, known=True)
+        resp = client.post("/api/v1/transfers/ABC123/resume")
+        assert resp.status_code == 202
+        qb.torrents_resume.assert_called_once_with(torrent_hashes="abc123")
+
+    def test_resume_unknown_hash_is_404(self, client, mocker):
+        qb = self._client(mocker, known=False)
+        resp = client.post("/api/v1/transfers/abc123/resume")
+        assert resp.status_code == 404
+        assert resp.json()["code"] == "TRANSFER_NOT_FOUND"
+        qb.torrents_resume.assert_not_called()
+
+    def test_delete_removes_torrent_but_keeps_files(self, client, mocker):
+        qb = self._client(mocker, known=True)
+        resp = client.delete("/api/v1/transfers/abc123")
+        assert resp.status_code == 202
+        qb.torrents_delete.assert_called_once_with(torrent_hashes="abc123", delete_files=False)
+
+    def test_delete_unknown_hash_is_404(self, client, mocker):
+        qb = self._client(mocker, known=False)
+        resp = client.delete("/api/v1/transfers/abc123")
+        assert resp.status_code == 404
+        qb.torrents_delete.assert_not_called()
+
+    def test_actions_503_when_qbittorrent_unavailable(self, client, mocker):
+        mocker.patch("torrent_downloader.routers.transfers.get_torrent_client", return_value=None)
+        assert client.post("/api/v1/transfers/abc123/resume").status_code == 503
+        assert client.delete("/api/v1/transfers/abc123").status_code == 503

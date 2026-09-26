@@ -104,6 +104,24 @@ def stop_seeding_transfers(client: qbittorrentapi.Client) -> None:
         app_logger.info(f"Succesfully stopped torrent:{torrent.get('name', '')}")
 
 
+def has_transfer(client: qbittorrentapi.Client, torrent_hash: str) -> bool:
+    """Whether qBittorrent currently holds a torrent with this info-hash."""
+    torrents: Any = client.torrents_info(torrent_hashes=torrent_hash.lower())
+    return any(t.get("hash", "").lower() == torrent_hash.lower() for t in torrents)
+
+
+def resume_transfer(client: qbittorrentapi.Client, torrent_hash: str) -> None:
+    """Resume one torrent. A no-op on a torrent that is already running."""
+    client.torrents_resume(torrent_hashes=torrent_hash.lower())
+    app_logger.info(f"Resumed torrent {torrent_hash.lower()}")
+
+
+def remove_transfer(client: qbittorrentapi.Client, torrent_hash: str) -> None:
+    """Remove one torrent from qBittorrent, keeping its files on disk."""
+    client.torrents_delete(torrent_hashes=torrent_hash.lower(), delete_files=False)
+    app_logger.info(f"Removed torrent {torrent_hash.lower()} (files kept)")
+
+
 def matches_vpn_allowlist(current_interface: str, allowlist: Sequence[str]) -> bool:
     """
     Case-insensitive membership test for a bound interface against the allowlist.

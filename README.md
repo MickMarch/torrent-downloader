@@ -58,6 +58,8 @@ All paths under `/api/v1`. Every endpoint except `/health` requires
 | `POST` | `/download` | Body `{source_url, media_type, tmdb_id, dry_run?}`. `source_url` is a magnet, a `.torrent` URL, or an HTML details page. Resolves the host save path from `MEDIA_HOST_PATH` + media type, enforces VPN binding, returns `torrent_hash`. |
 | `GET` | `/transfers` | Active transfers with state. |
 | `GET` | `/transfers/{torrent_hash}/info` | Cached `{media_type, host_path, tmdb_id}` for a hash (used by the orchestrator at completion). 404 `TRANSFER_NOT_FOUND` if unknown. |
+| `POST` | `/transfers/{torrent_hash}/resume` | Resume one torrent; no-op if already running. `404 TRANSFER_NOT_FOUND` if unknown. |
+| `DELETE` | `/transfers/{torrent_hash}` | Remove one torrent from qBittorrent, keeping its files. `404` if unknown. |
 | `POST` | `/transfers/stop-seeding` | Pause every completed (seeding) torrent. Never touches in-progress downloads. |
 | `GET` | `/storage` | Disk usage of the media path. |
 | `DELETE` | `/cache` | Evict all cached data. |

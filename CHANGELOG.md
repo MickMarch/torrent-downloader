@@ -7,6 +7,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- `POST /api/v1/transfers/{hash}/resume` and `DELETE /api/v1/transfers/{hash}`
+  (removes the torrent from qBittorrent, files kept). Both 404 with
+  `TRANSFER_NOT_FOUND` for an unknown hash. Used by the orchestrator's
+  stuck-download remediation.
+
 ## [1.7.0] - 2026-09-21
 
 ### Changed
