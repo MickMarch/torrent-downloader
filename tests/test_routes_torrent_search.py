@@ -148,3 +148,50 @@ class TestMovieBareTitlePass:
         search = mocker.patch("torrent_downloader.routers.search.search_torrents", return_value=[])
         client.get(SEARCH_URL, params={"query": "Storks", "media_type": "movie"})
         assert search.call_count == 1
+
+
+class TestAltQuery:
+    def test_alt_query_is_searched_and_unioned(
+        self, client: TestClient, mocker: MockerFixture
+    ) -> None:
+        mocker.patch(
+            "torrent_downloader.routers.search.get_torrent_client",
+            return_value=mocker.MagicMock(),
+        )
+        by_query = {
+            "Lee Cronin's The Mummy 2026": [
+                _make_torrent("Lee.Cronins.The.Mummy.2026.1080p", 40, "magnet:?xt=urn:btih:aaa")
+            ],
+            "Lee Cronin's The Mummy": [],
+            "The Mummy 2026": [
+                _make_torrent("The.Mummy.2026.2160p.WEB", 90, "magnet:?xt=urn:btih:bbb"),
+                _make_torrent("Lee.Cronins.The.Mummy.2026.1080p", 40, "magnet:?xt=urn:btih:aaa"),
+            ],
+            "The Mummy": [_make_torrent("The.Mummy.1999.1080p", 500, "magnet:?xt=urn:btih:old")],
+        }
+        search = mocker.patch(
+            "torrent_downloader.routers.search.search_torrents",
+            side_effect=lambda _c, q, _s: by_query[q],
+        )
+        body = client.get(
+            SEARCH_URL,
+            params={
+                "query": "Lee Cronin's The Mummy 2026",
+                "media_type": "movie",
+                "alt_query": "The Mummy 2026",
+            },
+        ).json()
+        assert [c.args[1] for c in search.call_args_list] == list(by_query)
+        names = sorted(t["fileName"] for group in body["data"].values() for t in group)
+        assert names == ["Lee.Cronins.The.Mummy.2026.1080p", "The.Mummy.2026.2160p.WEB"]
+
+    def test_alt_query_equal_to_query_is_not_searched_twice(
+        self, client: TestClient, mocker: MockerFixture
+    ) -> None:
+        _patch_pipeline(mocker, [])
+        search = mocker.patch("torrent_downloader.routers.search.search_torrents", return_value=[])
+        client.get(
+            SEARCH_URL,
+            params={"query": "The Wire", "media_type": "show", "alt_query": "the wire "},
+        )
+        assert search.call_count == 1

@@ -93,11 +93,15 @@ def api_search_torrents(
     media_type: MediaType,
     season: int | None = None,
     episode: int | None = None,
+    alt_query: str | None = None,
 ) -> TorrentSearchResponse:
     """Search for torrents via qBittorrent plugins and return results grouped by resolution.
 
     ``media_type`` is required. For shows, an optional ``season`` (and ``episode``)
     targets the search at a specific season/episode instead of the show as a whole.
+    ``alt_query`` is a second spelling of the same title (what the user typed,
+    when TMDB's canonical title differs from release names); its results are
+    unioned with the primary query's.
     """
     try:
         scope: TorrentSearchScope = TorrentSearchScope(
@@ -118,11 +122,15 @@ def api_search_torrents(
             detail="qBittorrent client unavailable.",
         )
 
-    scoped_results: list[dict[str, Any]] = _search_pipeline(client, query, scope)
-    if scope.media_type is MediaType.MOVIE:
-        scoped_results = union_by_url(
-            [scoped_results, _movie_bare_title_pass(client, query, scope)]
-        )
+    queries: list[str] = [query]
+    if alt_query and alt_query.strip().casefold() != query.strip().casefold():
+        queries.append(alt_query.strip())
+    batches: list[list[dict[str, Any]]] = []
+    for q in queries:
+        batches.append(_search_pipeline(client, q, scope))
+        if scope.media_type is MediaType.MOVIE:
+            batches.append(_movie_bare_title_pass(client, q, scope))
+    scoped_results: list[dict[str, Any]] = union_by_url(batches)
     grouped: dict[str, list[TorrentResult]] = {
         resolution: [TorrentResult(**item) for item in items]
         for resolution, items in group_by_resolution(scoped_results).items()
