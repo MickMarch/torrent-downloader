@@ -12,6 +12,7 @@ from torrent_downloader.core.config import config
 from torrent_downloader.core.constants import TAG_SEARCH
 from torrent_downloader.core.errors import AppException, ErrorCode
 from torrent_downloader.core.limiter import RATE_LIMIT_SEARCH, limiter
+from torrent_downloader.core.logger import app_logger
 from torrent_downloader.schemas.errors import ErrorResponse
 from torrent_downloader.schemas.tmdb import (
     TmdbMediaDetailResponse,
@@ -23,9 +24,11 @@ from torrent_downloader.services.language import annotate_and_filter
 from torrent_downloader.services.qbittorrent import (
     filter_and_sort_results,
     filter_by_scope,
+    filter_by_year,
     get_torrent_client,
     group_by_resolution,
     search_torrents,
+    split_trailing_year,
 )
 from torrent_downloader.services.tmdb import (
     extract_media_type,
@@ -114,6 +117,20 @@ def api_search_torrents(
             detail="qBittorrent client unavailable.",
         )
 
+    scoped_results: list[dict[str, Any]] = _search_pipeline(client, query, scope)
+    if not scoped_results and scope.media_type is MediaType.MOVIE:
+        scoped_results = _movie_year_fallback(client, query, scope)
+    grouped: dict[str, list[TorrentResult]] = {
+        resolution: [TorrentResult(**item) for item in items]
+        for resolution, items in group_by_resolution(scoped_results).items()
+    }
+
+    return TorrentSearchResponse(status="success", message="", data=grouped)
+
+
+def _search_pipeline(
+    client: qbittorrentapi.Client, query: str, scope: TorrentSearchScope
+) -> list[dict[str, Any]]:
     raw_results: list[dict[str, Any]] = search_torrents(client, query, scope)
     processed_results: list[dict[str, Any]] = filter_and_sort_results(raw_results)
     language_results: list[dict[str, Any]] = annotate_and_filter(
@@ -121,13 +138,20 @@ def api_search_torrents(
         target_code=config.target_language,
         policy=config.audio_language_filter,
     )
-    scoped_results: list[dict[str, Any]] = filter_by_scope(language_results, scope)
-    grouped: dict[str, list[TorrentResult]] = {
-        resolution: [TorrentResult(**item) for item in items]
-        for resolution, items in group_by_resolution(scoped_results).items()
-    }
+    return filter_by_scope(language_results, scope)
 
-    return TorrentSearchResponse(status="success", message="", data=grouped)
+
+def _movie_year_fallback(
+    client: qbittorrentapi.Client, query: str, scope: TorrentSearchScope
+) -> list[dict[str, Any]]:
+    """Some plugins return nothing for "Title YYYY"; search the title alone
+    and keep only releases PTN dates to that year."""
+    split = split_trailing_year(query)
+    if split is None:
+        return []
+    title, year = split
+    app_logger.info(f"No results for '{query}'; retrying '{title}' filtered to year {year}.")
+    return filter_by_year(_search_pipeline(client, title, scope), year)
 
 
 @router.get(

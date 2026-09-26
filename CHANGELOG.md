@@ -7,6 +7,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+
+- A season or episode torrent search runs the scene-tagged pattern (`S06`,
+  `S06E05`) and the bare title, then unions the results; the old `Season 6`
+  pattern missed most releases. A movie search that finds nothing for
+  `Title YYYY` retries the bare title and keeps releases dated to that year.
+
 ## [1.12.0] - 2026-09-26
 
 ### Changed

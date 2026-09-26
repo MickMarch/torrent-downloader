@@ -1,5 +1,6 @@
 """qBittorrent Web API client: connection, transfer management, and plugin-based search."""
 
+import re
 import time
 from collections.abc import Sequence
 from typing import Any
@@ -52,10 +53,15 @@ SEARCH_CATEGORY_BY_MEDIA_TYPE: dict[MediaType, str] = {
     MediaType.SHOW: SEARCH_CATEGORY_TV,
 }
 
-# Season packs are usually released as "Show Season 2" while single episodes
-# use the S02E05 tag, so the two scopes take different pattern shapes.
-SEASON_TAG_TEMPLATE: str = "Season {season}"
+# Releases carry the scene tag (S02, S02E05); "Season 2" in a pattern misses
+# most of them. A scoped search runs the tagged pattern and the bare title,
+# unions the two, and lets filter_by_scope pick.
+SEASON_TAG_TEMPLATE: str = "S{season:02d}"
 EPISODE_TAG_TEMPLATE: str = "S{season:02d}E{episode:02d}"
+# A movie query is "Title YYYY"; when that yields nothing the title alone is
+# searched and results are kept only when their parsed year matches.
+_TRAILING_YEAR = re.compile(r"^(?P<title>.+?)\s+(?P<year>(19|20)\d{2})$")
+_RESULT_URL_KEY = "fileUrl"
 
 
 def get_torrent_client() -> qbittorrentapi.Client | None:
@@ -182,19 +188,60 @@ def is_vpn_bound(
         return False
 
 
-def build_search_pattern(query: str, scope: TorrentSearchScope) -> str:
-    """Refines the search query with a season/episode tag from the scope.
+def build_search_patterns(query: str, scope: TorrentSearchScope) -> list[str]:
+    """The plugin patterns a scope needs, most specific first.
 
-    Whole-title and whole-series scopes search on the bare query. A season scope
-    appends ``Season N`` (how season packs are usually named); an episode scope
-    appends ``S0NE0M`` so trackers return the targeted episode rather than the
-    highest-seeded (usually latest) season.
+    Whole-title and whole-series scopes search the bare query. A season scope
+    searches ``Title S0N`` and the bare title (packs named "Season N" or
+    "Complete" only surface on the bare one); an episode scope searches
+    ``Title S0NE0M`` and ``Title S0N`` so a season pack remains a fallback.
     """
     if scope.season is None:
-        return query
+        return [query]
+    season_tag = f"{query} {SEASON_TAG_TEMPLATE.format(season=scope.season)}"
     if scope.episode is None:
-        return f"{query} {SEASON_TAG_TEMPLATE.format(season=scope.season)}"
-    return f"{query} {EPISODE_TAG_TEMPLATE.format(season=scope.season, episode=scope.episode)}"
+        return [season_tag, query]
+    episode_tag = (
+        f"{query} {EPISODE_TAG_TEMPLATE.format(season=scope.season, episode=scope.episode)}"
+    )
+    return [episode_tag, season_tag]
+
+
+def build_search_pattern(query: str, scope: TorrentSearchScope) -> str:
+    """The primary (most specific) pattern for a scope."""
+    return build_search_patterns(query, scope)[0]
+
+
+def split_trailing_year(query: str) -> tuple[str, int] | None:
+    """``"Storks 2016"`` -> ``("Storks", 2016)``; ``None`` when no year trails."""
+    match = _TRAILING_YEAR.match(query.strip())
+    if match is None:
+        return None
+    return match.group("title"), int(match.group("year"))
+
+
+def filter_by_year(results: list[dict[str, Any]], year: int) -> list[dict[str, Any]]:
+    """Keeps releases whose parsed year is ``year``. Releases with no parseable
+    year are dropped: without the year in the pattern they are the noise."""
+    kept: list[dict[str, Any]] = []
+    for result in results:
+        parsed_year = PTN.parse(result.get("fileName", "")).get("year")
+        if parsed_year == year:
+            kept.append(result)
+    return kept
+
+
+def _union_by_url(batches: Sequence[list[dict[str, Any]]]) -> list[dict[str, Any]]:
+    seen: set[str] = set()
+    merged: list[dict[str, Any]] = []
+    for batch in batches:
+        for result in batch:
+            url = result.get(_RESULT_URL_KEY, "")
+            if url in seen:
+                continue
+            seen.add(url)
+            merged.append(result)
+    return merged
 
 
 def _parsed_seasons(parsed_season: Any) -> list[int]:
@@ -308,10 +355,12 @@ def search_torrents(
         app_logger.info(f"Returning cached results for query: '{query}' scope: {cache_key}")
         return cached_results
 
-    pattern: str = build_search_pattern(query, scope)
     category: str = SEARCH_CATEGORY_BY_MEDIA_TYPE[scope.media_type]
-    app_logger.info(f"Initiating new search for pattern: '{pattern}' category: '{category}'")
-    parsed_results: list[dict[str, Any]] = execute_plugin_search(client, pattern, category)
+    batches: list[list[dict[str, Any]]] = []
+    for pattern in build_search_patterns(query, scope):
+        app_logger.info(f"Initiating new search for pattern: '{pattern}' category: '{category}'")
+        batches.append(execute_plugin_search(client, pattern, category))
+    parsed_results: list[dict[str, Any]] = _union_by_url(batches)
 
     app_logger.info(f"Search completed. Found {len(parsed_results)} total results.")
     app_cache.set(cache_key, parsed_results, expire=config.cache_expiration_seconds)
