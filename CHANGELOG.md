@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.8.0] - 2026-09-25
+
 ### Added
 
 - `POST /api/v1/transfers/{hash}/resume` and `DELETE /api/v1/transfers/{hash}`
