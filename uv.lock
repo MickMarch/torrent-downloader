@@ -432,8 +432,8 @@ wheels = [
 
 [[package]]
 name = "medialab-contracts"
-version = "0.5.0"
-source = { git = "https://github.com/MickMarch/medialab-contracts?rev=v0.5.0#75e98c1ba5577b8421b9debbf0021313d986bdf1" }
+version = "0.6.0"
+source = { git = "https://github.com/MickMarch/medialab-contracts?rev=v0.6.0#1afd88f3eff6d41aaa26c558eea0fb5c895c4eda" }
 dependencies = [
     { name = "pydantic" },
 ]
@@ -798,7 +798,7 @@ requires-dist = [
     { name = "diskcache", specifier = ">=5.6.3" },
     { name = "fastapi", specifier = ">=0.136.1" },
     { name = "idna", specifier = ">=3.15" },
-    { name = "medialab-contracts", git = "https://github.com/MickMarch/medialab-contracts?rev=v0.5.0" },
+    { name = "medialab-contracts", git = "https://github.com/MickMarch/medialab-contracts?rev=v0.6.0" },
     { name = "parse-torrent-title", specifier = ">=2.8.2" },
     { name = "pydantic-settings", specifier = ">=2.14.2" },
     { name = "qbittorrent-api", specifier = ">=2026.5.1" },
