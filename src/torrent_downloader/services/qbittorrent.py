@@ -89,6 +89,7 @@ def get_active_transfers(client: qbittorrentapi.Client) -> list[TransferInfo]:
             upload_speed=torrent.get("upspeed", DEFAULT_SPEED_BPS),
             eta_seconds=torrent.get("eta", DEFAULT_ETA_SECONDS),
             save_path=torrent.get("save_path", DEFAULT_SAVE_PATH),
+            content_path=torrent.get("content_path", ""),
         )
         parsed_transfers.append(transfer_state)
 

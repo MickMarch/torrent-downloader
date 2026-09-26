@@ -387,3 +387,25 @@ class TestPerHashActions:
         mocker.patch("torrent_downloader.routers.transfers.get_torrent_client", return_value=None)
         assert client.post("/api/v1/transfers/abc123/resume").status_code == 503
         assert client.delete("/api/v1/transfers/abc123").status_code == 503
+
+
+class TestTransfersContentPath:
+    def test_transfer_carries_qbittorrent_content_path(self, client, mocker):
+        qb = mocker.MagicMock()
+        qb.torrents_info.return_value = [
+            {
+                "name": "Movie Name (2021) [1080p] [5 1]",
+                "size": 10,
+                "progress": 1.0,
+                "hash": "abc",
+                "state": "stoppedUP",
+                "dlspeed": 0,
+                "upspeed": 0,
+                "eta": 0,
+                "save_path": "F:\Media\Movies",
+                "content_path": "F:\Media\Movies\Movie Name (2021) [1080p] [5.1]",
+            }
+        ]
+        mocker.patch("torrent_downloader.routers.transfers.get_torrent_client", return_value=qb)
+        body = client.get("/api/v1/transfers").json()
+        assert body["data"][0]["content_path"].endswith("[5.1]")
