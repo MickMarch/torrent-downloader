@@ -59,7 +59,7 @@ All paths under `/api/v1`. Every endpoint except `/health` requires
 | `GET` | `/transfers` | Active transfers with state. |
 | `GET` | `/transfers/{torrent_hash}/info` | Cached `{media_type, host_path, tmdb_id}` for a hash (used by the orchestrator at completion). 404 `TRANSFER_NOT_FOUND` if unknown. |
 | `POST` | `/transfers/{torrent_hash}/resume` | Resume one torrent; no-op if already running. `404 TRANSFER_NOT_FOUND` if unknown. |
-| `DELETE` | `/transfers/{torrent_hash}` | Remove one torrent from qBittorrent, keeping its files. `404` if unknown. |
+| `DELETE` | `/transfers/{torrent_hash}[?delete_files=true]` | Remove one torrent from qBittorrent, keeping its files unless `delete_files=true`. `404` if unknown. |
 | `POST` | `/transfers/stop-seeding` | Pause every completed (seeding) torrent. Never touches in-progress downloads. |
 | `GET` | `/storage` | Disk usage of the media path. |
 | `DELETE` | `/cache` | Evict all cached data. |

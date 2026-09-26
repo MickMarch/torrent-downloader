@@ -377,6 +377,13 @@ class TestPerHashActions:
         assert resp.status_code == 202
         qb.torrents_delete.assert_called_once_with(torrent_hashes="abc123", delete_files=False)
 
+    def test_delete_with_files_forwards_the_flag(self, client, mocker):
+        qb = self._client(mocker, known=True)
+        resp = client.delete("/api/v1/transfers/abc123?delete_files=true")
+        assert resp.status_code == 202
+        assert "files deleted" in resp.json()["message"]
+        qb.torrents_delete.assert_called_once_with(torrent_hashes="abc123", delete_files=True)
+
     def test_delete_unknown_hash_is_404(self, client, mocker):
         qb = self._client(mocker, known=False)
         resp = client.delete("/api/v1/transfers/abc123")

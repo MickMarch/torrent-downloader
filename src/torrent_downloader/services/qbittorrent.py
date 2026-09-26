@@ -117,10 +117,14 @@ def resume_transfer(client: qbittorrentapi.Client, torrent_hash: str) -> None:
     app_logger.info(f"Resumed torrent {torrent_hash.lower()}")
 
 
-def remove_transfer(client: qbittorrentapi.Client, torrent_hash: str) -> None:
-    """Remove one torrent from qBittorrent, keeping its files on disk."""
-    client.torrents_delete(torrent_hashes=torrent_hash.lower(), delete_files=False)
-    app_logger.info(f"Removed torrent {torrent_hash.lower()} (files kept)")
+def remove_transfer(
+    client: qbittorrentapi.Client, torrent_hash: str, *, delete_files: bool = False
+) -> None:
+    """Remove one torrent from qBittorrent; its files only when asked."""
+    client.torrents_delete(torrent_hashes=torrent_hash.lower(), delete_files=delete_files)
+    app_logger.info(
+        f"Removed torrent {torrent_hash.lower()} (files {'deleted' if delete_files else 'kept'})"
+    )
 
 
 def matches_vpn_allowlist(current_interface: str, allowlist: Sequence[str]) -> bool:
