@@ -7,6 +7,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- `GET /search/torrents` accepts `alt_query`, a second spelling of the title
+  (what the user typed) whose results are unioned with the primary query's.
+
 ## [1.12.2] - 2026-09-26
 
 ### Changed
