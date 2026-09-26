@@ -21,7 +21,10 @@ from torrent_downloader.services.qbittorrent import (
     NO_INTERFACES_CONFIGURED,
     get_active_transfers,
     get_torrent_client,
+    has_transfer,
     is_vpn_bound,
+    remove_transfer,
+    resume_transfer,
     stop_seeding_transfers,
 )
 from torrent_downloader.services.source import (
@@ -215,6 +218,64 @@ def api_stop_seeding_transfers(request: Request) -> DownloadResponse:
 
     stop_seeding_transfers(client)
     return DownloadResponse(status="success", message="All seeding transfers stopped.")
+
+
+def _require_transfer(torrent_hash: str) -> qbittorrentapi.Client:
+    """The qBittorrent client, or the structured 503 / 404 a per-hash action needs."""
+    client: qbittorrentapi.Client | None = get_torrent_client()
+    if not client:
+        raise AppException(
+            status_code=fastapi_status.HTTP_503_SERVICE_UNAVAILABLE,
+            code=ErrorCode.QB_UNAVAILABLE,
+            detail="qBittorrent client unavailable.",
+        )
+    if not has_transfer(client, torrent_hash):
+        raise AppException(
+            status_code=fastapi_status.HTTP_404_NOT_FOUND,
+            code=ErrorCode.TRANSFER_NOT_FOUND,
+            detail=f"No torrent with hash: {torrent_hash}",
+        )
+    return client
+
+
+@router.post(
+    "/transfers/{torrent_hash}/resume",
+    response_model=DownloadResponse,
+    status_code=fastapi_status.HTTP_202_ACCEPTED,
+    summary="Resume one torrent (no-op if already running).",
+    responses={
+        404: {"model": ErrorResponse, "description": "No torrent with this hash."},
+        **_QB_ERROR_RESPONSES,
+    },
+)
+@limiter.limit(RATE_LIMIT_DEFAULT)
+def api_resume_transfer(request: Request, torrent_hash: str) -> DownloadResponse:
+    """Resume an errored or paused torrent so the completion hook can still fire."""
+    client = _require_transfer(torrent_hash)
+    resume_transfer(client, torrent_hash)
+    return DownloadResponse(
+        status="success", message="Transfer resumed.", torrent_hash=torrent_hash.lower()
+    )
+
+
+@router.delete(
+    "/transfers/{torrent_hash}",
+    response_model=DownloadResponse,
+    status_code=fastapi_status.HTTP_202_ACCEPTED,
+    summary="Remove one torrent from qBittorrent, keeping its files.",
+    responses={
+        404: {"model": ErrorResponse, "description": "No torrent with this hash."},
+        **_QB_ERROR_RESPONSES,
+    },
+)
+@limiter.limit(RATE_LIMIT_DEFAULT)
+def api_remove_transfer(request: Request, torrent_hash: str) -> DownloadResponse:
+    """Drop qBittorrent's handle on a finished download. Files are never deleted."""
+    client = _require_transfer(torrent_hash)
+    remove_transfer(client, torrent_hash)
+    return DownloadResponse(
+        status="success", message="Transfer removed; files kept.", torrent_hash=torrent_hash.lower()
+    )
 
 
 @router.get(
