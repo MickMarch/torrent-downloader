@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed
+
+- A season search also runs the `Season N` pattern; a movie search always
+  runs the bare title beside `Title YYYY` and unions the two (bare hits kept
+  only when dated to that year).
+
 ## [1.12.1] - 2026-09-26
 
 ### Fixed

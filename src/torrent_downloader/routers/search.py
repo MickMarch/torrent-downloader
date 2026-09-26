@@ -29,6 +29,7 @@ from torrent_downloader.services.qbittorrent import (
     group_by_resolution,
     search_torrents,
     split_trailing_year,
+    union_by_url,
 )
 from torrent_downloader.services.tmdb import (
     extract_media_type,
@@ -118,8 +119,10 @@ def api_search_torrents(
         )
 
     scoped_results: list[dict[str, Any]] = _search_pipeline(client, query, scope)
-    if not scoped_results and scope.media_type is MediaType.MOVIE:
-        scoped_results = _movie_year_fallback(client, query, scope)
+    if scope.media_type is MediaType.MOVIE:
+        scoped_results = union_by_url(
+            [scoped_results, _movie_bare_title_pass(client, query, scope)]
+        )
     grouped: dict[str, list[TorrentResult]] = {
         resolution: [TorrentResult(**item) for item in items]
         for resolution, items in group_by_resolution(scoped_results).items()
@@ -141,16 +144,17 @@ def _search_pipeline(
     return filter_by_scope(language_results, scope)
 
 
-def _movie_year_fallback(
+def _movie_bare_title_pass(
     client: qbittorrentapi.Client, query: str, scope: TorrentSearchScope
 ) -> list[dict[str, Any]]:
-    """Some plugins return nothing for "Title YYYY"; search the title alone
-    and keep only releases PTN dates to that year."""
+    """Some plugins answer only the bare title, others only "Title YYYY", so a
+    movie always searches both; bare-title hits count only when PTN dates
+    them to the requested year."""
     split = split_trailing_year(query)
     if split is None:
         return []
     title, year = split
-    app_logger.info(f"No results for '{query}'; retrying '{title}' filtered to year {year}.")
+    app_logger.info(f"Also searching '{title}' filtered to year {year}.")
     return filter_by_year(_search_pipeline(client, title, scope), year)
 
 

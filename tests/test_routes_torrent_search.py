@@ -114,8 +114,8 @@ class TestSearchTorrentsRoute:
         assert scope_arg.episode is None
 
 
-class TestMovieYearFallbackRoute:
-    def test_empty_year_search_retries_the_bare_title(
+class TestMovieBareTitlePass:
+    def test_year_and_bare_title_are_both_searched_and_unioned(
         self, client: TestClient, mocker: MockerFixture
     ) -> None:
         mocker.patch(
@@ -123,7 +123,10 @@ class TestMovieYearFallbackRoute:
             return_value=mocker.MagicMock(),
         )
         by_query = {
-            "Storks 2016": [],
+            "Storks 2016": [
+                _make_torrent("Storks.2016.2160p.WEB.x265", 95, "magnet:?xt=urn:btih:ccc"),
+                _make_torrent("Storks.2016.1080p.BluRay.x264", 90, "magnet:?xt=urn:btih:aaa"),
+            ],
             "Storks": [
                 _make_torrent("Storks.2016.1080p.BluRay.x264", 90, "magnet:?xt=urn:btih:aaa"),
                 _make_torrent("Storks.2019.720p.WEB.x264", 90, "magnet:?xt=urn:btih:bbb"),
@@ -136,9 +139,9 @@ class TestMovieYearFallbackRoute:
         body = client.get(SEARCH_URL, params={"query": "Storks 2016", "media_type": "movie"}).json()
         assert [c.args[1] for c in search.call_args_list] == ["Storks 2016", "Storks"]
         names = [t["fileName"] for group in body["data"].values() for t in group]
-        assert names == ["Storks.2016.1080p.BluRay.x264"]
+        assert sorted(names) == ["Storks.2016.1080p.BluRay.x264", "Storks.2016.2160p.WEB.x265"]
 
-    def test_no_fallback_without_a_trailing_year(
+    def test_no_second_pass_without_a_trailing_year(
         self, client: TestClient, mocker: MockerFixture
     ) -> None:
         _patch_pipeline(mocker, [])

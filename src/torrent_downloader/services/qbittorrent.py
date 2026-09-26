@@ -57,6 +57,7 @@ SEARCH_CATEGORY_BY_MEDIA_TYPE: dict[MediaType, str] = {
 # most of them. A scoped search runs the tagged pattern and the bare title,
 # unions the two, and lets filter_by_scope pick.
 SEASON_TAG_TEMPLATE: str = "S{season:02d}"
+SEASON_WORD_TEMPLATE: str = "Season {season}"
 EPISODE_TAG_TEMPLATE: str = "S{season:02d}E{episode:02d}"
 # A movie query is "Title YYYY"; when that yields nothing the title alone is
 # searched and results are kept only when their parsed year matches.
@@ -192,15 +193,17 @@ def build_search_patterns(query: str, scope: TorrentSearchScope) -> list[str]:
     """The plugin patterns a scope needs, most specific first.
 
     Whole-title and whole-series scopes search the bare query. A season scope
-    searches ``Title S0N`` and the bare title (packs named "Season N" or
-    "Complete" only surface on the bare one); an episode scope searches
-    ``Title S0NE0M`` and ``Title S0N`` so a season pack remains a fallback.
+    searches ``Title S0N``, ``Title Season N`` (uploaders use either) and the
+    bare title (complete-series packs only surface there); an episode scope
+    searches ``Title S0NE0M`` and ``Title S0N`` so a season pack remains a
+    fallback.
     """
     if scope.season is None:
         return [query]
     season_tag = f"{query} {SEASON_TAG_TEMPLATE.format(season=scope.season)}"
+    season_word = f"{query} {SEASON_WORD_TEMPLATE.format(season=scope.season)}"
     if scope.episode is None:
-        return [season_tag, query]
+        return [season_tag, season_word, query]
     episode_tag = (
         f"{query} {EPISODE_TAG_TEMPLATE.format(season=scope.season, episode=scope.episode)}"
     )
@@ -231,7 +234,7 @@ def filter_by_year(results: list[dict[str, Any]], year: int) -> list[dict[str, A
     return kept
 
 
-def _union_by_url(batches: Sequence[list[dict[str, Any]]]) -> list[dict[str, Any]]:
+def union_by_url(batches: Sequence[list[dict[str, Any]]]) -> list[dict[str, Any]]:
     seen: set[str] = set()
     merged: list[dict[str, Any]] = []
     for batch in batches:
@@ -360,7 +363,7 @@ def search_torrents(
     for pattern in build_search_patterns(query, scope):
         app_logger.info(f"Initiating new search for pattern: '{pattern}' category: '{category}'")
         batches.append(execute_plugin_search(client, pattern, category))
-    parsed_results: list[dict[str, Any]] = _union_by_url(batches)
+    parsed_results: list[dict[str, Any]] = union_by_url(batches)
 
     app_logger.info(f"Search completed. Found {len(parsed_results)} total results.")
     app_cache.set(cache_key, parsed_results, expire=config.cache_expiration_seconds)
