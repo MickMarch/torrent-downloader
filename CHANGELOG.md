@@ -7,6 +7,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- `GET /transfers` entries carry qBittorrent's `content_path` (contracts
+  v0.5.0), the real on-disk root the orchestrator renames from.
+
 ## [1.8.0] - 2026-09-25
 
 ### Added
