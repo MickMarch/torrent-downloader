@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.13.0] - 2026-09-26
+
 ### Added
 
 - `GET /search/torrents` accepts `alt_query`, a second spelling of the title
