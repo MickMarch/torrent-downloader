@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.12.0] - 2026-09-26
+
 ### Changed
 
 - Downloads are saved under `MEDIA_HOST_PATH\_incoming\<Movies|Shows>`
