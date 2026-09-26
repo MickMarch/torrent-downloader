@@ -7,6 +7,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- Torrent results carry `languages` (audio languages parsed from the name)
+  and `multiAudio`. `AUDIO_LANGUAGE_FILTER` (`lenient` default, `strict`,
+  `off`) drops releases tagged with a language other than `TARGET_LANGUAGE`;
+  untagged and multi-audio releases stay under `lenient`.
+
 ## [1.9.0] - 2026-09-25
 
 ### Added

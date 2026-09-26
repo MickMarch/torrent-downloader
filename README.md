@@ -54,7 +54,7 @@ All paths under `/api/v1`. Every endpoint except `/health` requires
 | `GET` | `/search/tmdb?query=` | TMDB multi-search (movies + shows). |
 | `GET` | `/search/tmdb/movie/{tmdb_id}` | TMDB movie detail. |
 | `GET` | `/search/tmdb/show/{tmdb_id}` | TMDB show detail, including the season list. |
-| `GET` | `/search/torrents?query=&media_type=[&season=&episode=]` | qBittorrent plugin search grouped by resolution. `media_type` required; shows accept `season`/`episode`, which refine the pattern and filter results to that scope. |
+| `GET` | `/search/torrents?query=&media_type=[&season=&episode=]` | qBittorrent plugin search grouped by resolution. `media_type` required; shows accept `season`/`episode`, which refine the pattern and filter results to that scope. Each result carries `languages` and `multiAudio` parsed from its name; `AUDIO_LANGUAGE_FILTER` drops foreign-tagged releases (see `.env.example`). |
 | `POST` | `/download` | Body `{source_url, media_type, tmdb_id, dry_run?}`. `source_url` is a magnet, a `.torrent` URL, or an HTML details page. Resolves the host save path from `MEDIA_HOST_PATH` + media type, enforces VPN binding, returns `torrent_hash`. |
 | `GET` | `/transfers` | Active transfers with state. |
 | `GET` | `/transfers/{torrent_hash}/info` | Cached `{media_type, host_path, tmdb_id}` for a hash (used by the orchestrator at completion). 404 `TRANSFER_NOT_FOUND` if unknown. |

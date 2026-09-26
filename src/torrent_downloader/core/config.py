@@ -3,6 +3,8 @@
 from pydantic import Field
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
+from torrent_downloader.services.language import LanguageFilter
+
 VPN_INTERFACE_SEPARATOR: str = ","
 DEFAULT_VPN_INTERFACES: str = "NordLynx"
 
@@ -17,6 +19,9 @@ class AppConfig(BaseSettings):
     qb_api_key: str | None = Field(default=None)
 
     target_language: str = Field(default="en")
+    # lenient: drop explicitly foreign single-language releases; strict: also
+    # drop untagged ones; off: show tags only. See services/language.py.
+    audio_language_filter: LanguageFilter = Field(default=LanguageFilter.LENIENT)
     minimum_seeders: int = Field(default=10)
     tmdb_api_key: str | None = Field(default=None)
 

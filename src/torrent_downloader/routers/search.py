@@ -8,6 +8,7 @@ from fastapi import status as fastapi_status
 from medialab_contracts import MediaType, TorrentSearchScope
 from pydantic import ValidationError
 
+from torrent_downloader.core.config import config
 from torrent_downloader.core.constants import TAG_SEARCH
 from torrent_downloader.core.errors import AppException, ErrorCode
 from torrent_downloader.core.limiter import RATE_LIMIT_SEARCH, limiter
@@ -18,6 +19,7 @@ from torrent_downloader.schemas.tmdb import (
     TmdbSearchResult,
 )
 from torrent_downloader.schemas.torrents import TorrentResult, TorrentSearchResponse
+from torrent_downloader.services.language import annotate_and_filter
 from torrent_downloader.services.qbittorrent import (
     filter_and_sort_results,
     filter_by_scope,
@@ -114,7 +116,12 @@ def api_search_torrents(
 
     raw_results: list[dict[str, Any]] = search_torrents(client, query, scope)
     processed_results: list[dict[str, Any]] = filter_and_sort_results(raw_results)
-    scoped_results: list[dict[str, Any]] = filter_by_scope(processed_results, scope)
+    language_results: list[dict[str, Any]] = annotate_and_filter(
+        processed_results,
+        target_code=config.target_language,
+        policy=config.audio_language_filter,
+    )
+    scoped_results: list[dict[str, Any]] = filter_by_scope(language_results, scope)
     grouped: dict[str, list[TorrentResult]] = {
         resolution: [TorrentResult(**item) for item in items]
         for resolution, items in group_by_resolution(scoped_results).items()

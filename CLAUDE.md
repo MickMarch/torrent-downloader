@@ -46,8 +46,10 @@ tmdb_id}` is cached against it for the orchestrator's
 **Search pipeline:** `search_torrents` (scope-aware pattern + cache key,
 category from `media_type`) -> `execute_plugin_search` -> `filter_and_sort_results`
 (drop below min seeders, keep any addable source, sort by seeders) ->
-`filter_by_scope` (season/episode scopes only: PTN parse, keep matches, keep
-range/complete packs as ranked-below fallbacks) -> `group_by_resolution`
+`annotate_and_filter` (stamp `languages`/`multiAudio` from the name, apply
+`AUDIO_LANGUAGE_FILTER` against `TARGET_LANGUAGE`) -> `filter_by_scope`
+(season/episode scopes only: PTN parse, keep matches, keep range/complete packs
+as ranked-below fallbacks) -> `group_by_resolution`
 (4K/1080p/720p/Other). Search uses qBittorrent's built-in plugin system,
 async-polled with a timeout; hanging plugins are stopped explicitly.
 
@@ -67,6 +69,7 @@ src/torrent_downloader/
 ├── core/        config, auth, limiter, middleware, cache, logger, errors, constants,
 │                settings_manager (runtime env updates, no route yet)
 ├── services/    qbittorrent (client, search, filter/sort/group, transfers, VPN check),
+│                language (audio language parse + AUDIO_LANGUAGE_FILTER policy),
 │                tmdb, source (source-URL classification + magnet scraping), storage
 ├── schemas/     request/response models; errors re-exports contracts ErrorResponse
 ├── routers/     system, search, transfers (registered in main.py under /api/v1)

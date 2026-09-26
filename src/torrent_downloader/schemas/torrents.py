@@ -13,6 +13,10 @@ class TorrentResult(BaseModel):
     siteUrl: str
     descrLink: str
     fileSize: int
+    languages: list[str] = []
+    """Audio languages parsed from the name (PTN names); empty when untagged."""
+    multiAudio: bool = False
+    """More than one audio track (``MULTi`` / ``DUAL``), usually incl. the original."""
 
 
 class TorrentSearchResponse(BaseModel):
