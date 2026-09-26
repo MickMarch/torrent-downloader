@@ -112,3 +112,36 @@ class TestSearchTorrentsRoute:
         scope_arg = spy.call_args.args[1]
         assert scope_arg.season == 2
         assert scope_arg.episode is None
+
+
+class TestMovieYearFallbackRoute:
+    def test_empty_year_search_retries_the_bare_title(
+        self, client: TestClient, mocker: MockerFixture
+    ) -> None:
+        mocker.patch(
+            "torrent_downloader.routers.search.get_torrent_client",
+            return_value=mocker.MagicMock(),
+        )
+        by_query = {
+            "Storks 2016": [],
+            "Storks": [
+                _make_torrent("Storks.2016.1080p.BluRay.x264", 90, "magnet:?xt=urn:btih:aaa"),
+                _make_torrent("Storks.2019.720p.WEB.x264", 90, "magnet:?xt=urn:btih:bbb"),
+            ],
+        }
+        search = mocker.patch(
+            "torrent_downloader.routers.search.search_torrents",
+            side_effect=lambda _c, q, _s: by_query[q],
+        )
+        body = client.get(SEARCH_URL, params={"query": "Storks 2016", "media_type": "movie"}).json()
+        assert [c.args[1] for c in search.call_args_list] == ["Storks 2016", "Storks"]
+        names = [t["fileName"] for group in body["data"].values() for t in group]
+        assert names == ["Storks.2016.1080p.BluRay.x264"]
+
+    def test_no_fallback_without_a_trailing_year(
+        self, client: TestClient, mocker: MockerFixture
+    ) -> None:
+        _patch_pipeline(mocker, [])
+        search = mocker.patch("torrent_downloader.routers.search.search_torrents", return_value=[])
+        client.get(SEARCH_URL, params={"query": "Storks", "media_type": "movie"})
+        assert search.call_count == 1

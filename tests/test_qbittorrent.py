@@ -119,3 +119,27 @@ class TestGroupByResolution:
         assert len(grouped["720p"]) == 1
         assert "480p" not in grouped
         assert len(grouped["Other"]) == 1
+
+
+class TestScopedSearchUnion:
+    def test_season_scope_runs_both_patterns_and_dedupes(self, mocker) -> None:
+        from medialab_contracts import MediaType, TorrentSearchScope
+
+        from torrent_downloader.services import qbittorrent as qb
+
+        mocker.patch.object(qb.app_cache, "get", return_value=None)
+        mocker.patch.object(qb.app_cache, "set")
+        by_pattern = {
+            "Show S06": [{"fileName": "Show.S06.1080p", "fileUrl": "magnet:?a"}],
+            "Show": [
+                {"fileName": "Show.S06.1080p", "fileUrl": "magnet:?a"},
+                {"fileName": "Show.Season.6.Complete", "fileUrl": "magnet:?b"},
+            ],
+        }
+        run = mocker.patch.object(
+            qb, "execute_plugin_search", side_effect=lambda _c, p, _cat: by_pattern[p]
+        )
+        scope = TorrentSearchScope(media_type=MediaType.SHOW, season=6)
+        results = qb.search_torrents(mocker.MagicMock(), "Show", scope)
+        assert [c.args[1] for c in run.call_args_list] == ["Show S06", "Show"]
+        assert [r["fileUrl"] for r in results] == ["magnet:?a", "magnet:?b"]
