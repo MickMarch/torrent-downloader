@@ -30,9 +30,13 @@ class TestBuildSearchPattern:
         scope = TorrentSearchScope(media_type=MediaType.SHOW, season=2)
         assert build_search_pattern("The Wire", scope) == "The Wire S02"
 
-    def test_season_scope_also_searches_the_bare_title(self) -> None:
+    def test_season_scope_searches_tag_word_and_bare_title(self) -> None:
         scope = TorrentSearchScope(media_type=MediaType.SHOW, season=2)
-        assert build_search_patterns("The Wire", scope) == ["The Wire S02", "The Wire"]
+        assert build_search_patterns("The Wire", scope) == [
+            "The Wire S02",
+            "The Wire Season 2",
+            "The Wire",
+        ]
 
     def test_episode_scope_falls_back_to_the_season_tag(self) -> None:
         scope = TorrentSearchScope(media_type=MediaType.SHOW, season=2, episode=5)

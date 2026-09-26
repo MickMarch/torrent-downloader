@@ -131,6 +131,7 @@ class TestScopedSearchUnion:
         mocker.patch.object(qb.app_cache, "set")
         by_pattern = {
             "Show S06": [{"fileName": "Show.S06.1080p", "fileUrl": "magnet:?a"}],
+            "Show Season 6": [{"fileName": "Show.Season.6.Complete", "fileUrl": "magnet:?b"}],
             "Show": [
                 {"fileName": "Show.S06.1080p", "fileUrl": "magnet:?a"},
                 {"fileName": "Show.Season.6.Complete", "fileUrl": "magnet:?b"},
@@ -141,5 +142,5 @@ class TestScopedSearchUnion:
         )
         scope = TorrentSearchScope(media_type=MediaType.SHOW, season=6)
         results = qb.search_torrents(mocker.MagicMock(), "Show", scope)
-        assert [c.args[1] for c in run.call_args_list] == ["Show S06", "Show"]
+        assert [c.args[1] for c in run.call_args_list] == ["Show S06", "Show Season 6", "Show"]
         assert [r["fileUrl"] for r in results] == ["magnet:?a", "magnet:?b"]
