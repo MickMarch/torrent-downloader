@@ -32,6 +32,8 @@ class AppConfig(BaseSettings):
 
     cache_directory: str = Field(default=".cache")
     cache_expiration_seconds: int = Field(default=3600)
+    # Runtime setting overrides (see core/settings.py); lives on the cache volume.
+    settings_path: str = Field(default=".cache/settings.json")
 
     api_key: str | None = Field(default=None)
     api_host: str = Field(default="0.0.0.0")
@@ -42,7 +44,7 @@ class AppConfig(BaseSettings):
     # Comma-separated rather than list[str]: pydantic-settings JSON-parses complex
     # types in the env source before validators run, so a plain comma string on a
     # list field raises SettingsError. A str field also round-trips correctly
-    # through settings_manager.update_environment_variables.
+    # through the runtime settings store.
     vpn_interfaces: str = Field(default=DEFAULT_VPN_INTERFACES)
 
     @property

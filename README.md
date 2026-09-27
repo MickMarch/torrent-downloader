@@ -62,6 +62,9 @@ All paths under `/api/v1`. Every endpoint except `/health` requires
 | `DELETE` | `/transfers/{torrent_hash}[?delete_files=true]` | Remove one torrent from qBittorrent, keeping its files unless `delete_files=true`. `404` if unknown. |
 | `POST` | `/transfers/stop-seeding` | Pause every completed (seeding) torrent. Never touches in-progress downloads. |
 | `GET` | `/storage` | Disk usage of the media path. |
+| `GET` | `/settings` | Every runtime setting (search behaviour) with its effective value and source (`default`, `env`, `override`). |
+| `PUT` | `/settings/{key}` | Override one setting (`{"value": ...}`); validated against its bounds, persisted to `SETTINGS_PATH`, applied on the next search. |
+| `DELETE` | `/settings/{key}` | Drop the override. |
 | `DELETE` | `/cache` | Evict all cached data. |
 
 Errors: `{"status": "error", "code": "<ErrorCode>", "detail": "..."}`.

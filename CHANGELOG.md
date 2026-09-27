@@ -7,6 +7,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- Runtime settings: `GET /settings`, `PUT /settings/{key}`,
+  `DELETE /settings/{key}` for the search-behaviour tunables. Overrides
+  persist in `SETTINGS_PATH` on the cache volume and apply on the next search.
+
+### Removed
+
+- `core/settings_manager.py` (unused; writing `.env` inside a container
+  changes nothing until the container is recreated).
+
 ## [1.14.0] - 2026-09-26
 
 ### Changed

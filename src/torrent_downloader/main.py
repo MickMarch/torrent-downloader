@@ -16,7 +16,7 @@ from torrent_downloader.core.errors import AppException, ErrorCode
 from torrent_downloader.core.limiter import limiter
 from torrent_downloader.core.logger import app_logger
 from torrent_downloader.core.middleware import RequestLoggingMiddleware
-from torrent_downloader.routers import search, system, transfers
+from torrent_downloader.routers import search, settings, system, transfers
 
 app: FastAPI = FastAPI(
     title="Torrent Downloader API",
@@ -85,6 +85,7 @@ async def validation_exception_handler(
 
 
 app.include_router(system.router, prefix=API_PREFIX)
+app.include_router(settings.router, prefix=API_PREFIX)
 app.include_router(search.router, prefix=API_PREFIX, dependencies=[Depends(verify_api_key)])
 app.include_router(transfers.router, prefix=API_PREFIX, dependencies=[Depends(verify_api_key)])
 
