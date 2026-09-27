@@ -7,6 +7,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- `GET /search/tmdb/{media_type}/{tmdb_id}/videos?season=` returns a title's
+  YouTube trailers and teasers as a contracts `VideosResponse`, official
+  first, then trailers before teasers, then newest first. `season` narrows a
+  show to one season and is rejected for a movie with `422 INVALID_INPUT`.
+  English videos are included alongside the target language. Cached for
+  `discover_cache_seconds`; `DELETE /cache` clears it.
+
+### Changed
+
+- `medialab-contracts` pin bumped to v0.12.0.
+
 ## [1.17.0] - 2026-09-27
 
 ### Added
