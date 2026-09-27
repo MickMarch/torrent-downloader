@@ -1,4 +1,4 @@
-"""TMDB API client functions: multi-search, details, discover lists, normalisation."""
+"""TMDB API client functions: multi-search, details, discover lists, episodes, videos."""
 
 from datetime import UTC, datetime
 from typing import Any
@@ -12,6 +12,9 @@ from medialab_contracts import (
     MediaType,
     Season,
     SeriesEpisodesResponse,
+    Video,
+    VideosResponse,
+    VideoType,
 )
 
 from torrent_downloader.core.cache import app_cache
@@ -338,5 +341,99 @@ def get_series_episodes(series_id: int) -> SeriesEpisodesResponse:
         next_episode=_to_episode(next_raw) if next_raw else None,
         status=series.get(FIELD_STATUS) or "",
     )
+    app_cache.set(key, result.model_dump(mode="json"), expire=config.discover_cache_seconds)
+    return result
+
+
+# Videos: a title's or a season's trailers and teasers, YouTube only. Cached
+# like discover; TMDB adds a trailer rarely and the web fetches on click.
+
+ENDPOINT_VIDEOS: str = "videos"
+PARAM_INCLUDE_VIDEO_LANGUAGE: str = "include_video_language"
+VIDEO_LANGUAGE_SEPARATOR: str = ","
+# English is the fallback for a non-English target; ``null`` admits untagged videos.
+VIDEO_LANGUAGE_FALLBACK: str = "en"
+VIDEO_LANGUAGE_UNTAGGED: str = "null"
+VIDEO_SITE_YOUTUBE: str = "YouTube"
+
+FIELD_RESULTS: str = "results"
+FIELD_KEY: str = "key"
+FIELD_SITE: str = "site"
+FIELD_TYPE: str = "type"
+FIELD_OFFICIAL: str = "official"
+FIELD_PUBLISHED_AT: str = "published_at"
+FIELD_VIDEO_LANGUAGE: str = "iso_639_1"
+
+VIDEO_TYPE_BY_TMDB_TYPE: dict[str, VideoType] = {
+    "Trailer": VideoType.TRAILER,
+    "Teaser": VideoType.TEASER,
+}
+VIDEO_TYPE_RANK: dict[VideoType, int] = {VideoType.TRAILER: 0, VideoType.TEASER: 1}
+
+
+def _video_languages() -> str:
+    """``include_video_language`` value: target, English, untagged; no repeats."""
+    wanted: list[str] = [config.target_language, VIDEO_LANGUAGE_FALLBACK, VIDEO_LANGUAGE_UNTAGGED]
+    return VIDEO_LANGUAGE_SEPARATOR.join(dict.fromkeys(wanted))
+
+
+def _parse_published_at(raw: str | None) -> datetime | None:
+    if not raw:
+        return None
+    parsed: datetime = datetime.fromisoformat(raw)
+    return parsed if parsed.tzinfo else parsed.replace(tzinfo=UTC)
+
+
+def _to_video(raw: dict[str, Any]) -> Video:
+    return Video(
+        key=raw[FIELD_KEY],
+        name=raw.get(FIELD_NAME) or "",
+        type=VIDEO_TYPE_BY_TMDB_TYPE[raw[FIELD_TYPE]],
+        official=bool(raw.get(FIELD_OFFICIAL)),
+        published_at=_parse_published_at(raw.get(FIELD_PUBLISHED_AT)),
+        language=raw.get(FIELD_VIDEO_LANGUAGE) or "",
+    )
+
+
+def _is_wanted_video(raw: dict[str, Any]) -> bool:
+    return (
+        raw.get(FIELD_SITE) == VIDEO_SITE_YOUTUBE and raw.get(FIELD_TYPE) in VIDEO_TYPE_BY_TMDB_TYPE
+    )
+
+
+def _video_sort_key(video: Video) -> tuple[bool, int, bool, float]:
+    """Official first, trailers before teasers, newest first with undated last."""
+    published: float = video.published_at.timestamp() if video.published_at else 0.0
+    return (not video.official, VIDEO_TYPE_RANK[video.type], video.published_at is None, -published)
+
+
+def _videos_path(media_type: MediaType, tmdb_id: int, season: int | None) -> str:
+    if season is None:
+        return f"{TMDB_TYPE_BY_MEDIA_TYPE[media_type]}/{tmdb_id}/{ENDPOINT_VIDEOS}"
+    if media_type is not MediaType.SHOW:
+        raise ValueError("A season applies to shows only.")
+    return f"{ENDPOINT_TV}/{tmdb_id}/{_season_key(season)}/{ENDPOINT_VIDEOS}"
+
+
+def get_videos(media_type: MediaType, tmdb_id: int, season: int | None = None) -> VideosResponse:
+    """YouTube trailers and teasers of a title, or of one season of a show."""
+    path: str = _videos_path(media_type, tmdb_id, season)
+    key = (
+        CACHE_NAMESPACE_DISCOVER,
+        ENDPOINT_VIDEOS,
+        media_type.value,
+        tmdb_id,
+        season,
+        config.target_language,
+    )
+    cached = app_cache.get(key)
+    if cached is not None:
+        return VideosResponse.model_validate(cached)
+
+    data: dict[str, Any] = _tmdb_get(path, {PARAM_INCLUDE_VIDEO_LANGUAGE: _video_languages()})
+    videos: list[Video] = [
+        _to_video(raw) for raw in data.get(FIELD_RESULTS, []) if _is_wanted_video(raw)
+    ]
+    result = VideosResponse(videos=sorted(videos, key=_video_sort_key))
     app_cache.set(key, result.model_dump(mode="json"), expire=config.discover_cache_seconds)
     return result
