@@ -86,6 +86,16 @@ class TestApply:
         assert cfg.minimum_seeders == 10
         assert cfg.search_concurrency == 2
 
+    def test_discover_cache_seconds_bounds(self, tmp_path: Path) -> None:
+        cfg, rt, _ = _runtime(tmp_path)
+        view = rt.view("discover_cache_seconds")
+        assert view.default == 86400
+        assert (view.min, view.max) == (3600, 604800)
+        with pytest.raises(ValueError, match="at least"):
+            rt.set("discover_cache_seconds", 60)
+        rt.set("discover_cache_seconds", 7200)
+        assert cfg.discover_cache_seconds == 7200
+
     def test_unreadable_store_means_no_overrides(self, tmp_path: Path) -> None:
         path = tmp_path / "settings.json"
         path.write_text("{not json")

@@ -7,6 +7,22 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- `GET /discover/{media_type}?genre=&page=` returns one TMDB page as a
+  contracts `DiscoverResponse`: trending this week without `genre`, the most
+  popular titles in `genre` (with a minimum vote count) with it. TMDB `tv` is
+  mapped to `show`.
+- `GET /discover/{media_type}/genres` returns TMDB's genre list as a
+  contracts `GenresResponse`.
+- Runtime setting `discover_cache_seconds` (default one day, one hour to
+  seven days): how long discover and genre lists stay cached, applied on the
+  next cache write. `DELETE /cache` clears them too.
+
+### Changed
+
+- `medialab-contracts` pin bumped to v0.8.0.
+
 ## [1.15.0] - 2026-09-26
 
 ### Added

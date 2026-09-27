@@ -55,6 +55,8 @@ All paths under `/api/v1`. Every endpoint except `/health` requires
 | `GET` | `/search/tmdb/movie/{tmdb_id}` | TMDB movie detail. |
 | `GET` | `/search/tmdb/show/{tmdb_id}` | TMDB show detail, including the season list. |
 | `GET` | `/search/torrents?query=&media_type=[&season=&episode=&alt_query=]` | qBittorrent plugin search grouped by resolution. `media_type` required; shows accept `season`/`episode`, which refine the pattern and filter results to that scope; `alt_query` is a second spelling of the title whose hits are unioned in. Each result carries `languages` and `multiAudio` parsed from its name; `AUDIO_LANGUAGE_FILTER` drops foreign-tagged releases (see `.env.example`). |
+| `GET` | `/discover/{media_type}?[genre=&page=]` | One TMDB page as `DiscoverResponse` (`media_type` is `movie` or `show`): trending this week, or with `genre` the most popular titles in it with a minimum vote count. Cached for `DISCOVER_CACHE_SECONDS`. `503 TMDB_UNAVAILABLE` if TMDB is unconfigured or failing. |
+| `GET` | `/discover/{media_type}/genres` | TMDB genre list as `GenresResponse`, cached like discover. |
 | `POST` | `/download` | Body `{source_url, media_type, tmdb_id, dry_run?}`. `source_url` is a magnet, a `.torrent` URL, or an HTML details page. Resolves the host save path as `MEDIA_HOST_PATH\_incoming\<Movies|Shows>` (staging; the orchestrator places into the library), enforces VPN binding, returns `torrent_hash`. |
 | `GET` | `/transfers` | Active transfers with state. |
 | `GET` | `/transfers/{torrent_hash}/info` | Cached `{media_type, host_path, tmdb_id}` for a hash (used by the orchestrator at completion). 404 `TRANSFER_NOT_FOUND` if unknown. |
@@ -62,13 +64,13 @@ All paths under `/api/v1`. Every endpoint except `/health` requires
 | `DELETE` | `/transfers/{torrent_hash}[?delete_files=true]` | Remove one torrent from qBittorrent, keeping its files unless `delete_files=true`. `404` if unknown. |
 | `POST` | `/transfers/stop-seeding` | Pause every completed (seeding) torrent. Never touches in-progress downloads. |
 | `GET` | `/storage` | Disk usage of the media path. |
-| `GET` | `/settings` | Every runtime setting (search behaviour) with its effective value and source (`default`, `env`, `override`). |
+| `GET` | `/settings` | Every runtime setting (search and cache behaviour) with its effective value and source (`default`, `env`, `override`). |
 | `PUT` | `/settings/{key}` | Override one setting (`{"value": ...}`); validated against its bounds, persisted to `SETTINGS_PATH`, applied on the next search. |
 | `DELETE` | `/settings/{key}` | Drop the override. |
 | `DELETE` | `/cache` | Evict all cached data. |
 
 Errors: `{"status": "error", "code": "<ErrorCode>", "detail": "..."}`.
-Rate limits per IP: 60/min general, 20/min on `/search/*`; `429` carries
+Rate limits per IP: 60/min general, 20/min on `/search/*` and `/discover/*`; `429` carries
 `Retry-After`. Every response includes an `X-Request-ID` UUID.
 
 This service is stateless apart from its cache. Completion is signalled by
