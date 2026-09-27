@@ -4,7 +4,15 @@ from datetime import UTC, datetime
 from typing import Any
 
 import requests
-from medialab_contracts import DiscoverItem, DiscoverResponse, GenresResponse, MediaType
+from medialab_contracts import (
+    DiscoverItem,
+    DiscoverResponse,
+    Episode,
+    GenresResponse,
+    MediaType,
+    Season,
+    SeriesEpisodesResponse,
+)
 
 from torrent_downloader.core.cache import app_cache
 from torrent_downloader.core.config import config
@@ -212,5 +220,123 @@ def get_genres(media_type: MediaType) -> GenresResponse:
     tmdb_type: str = TMDB_TYPE_BY_MEDIA_TYPE[media_type]
     data: dict[str, Any] = _tmdb_get(f"{ENDPOINT_GENRES}/{tmdb_type}/list", {})
     result = GenresResponse.model_validate({"genres": data.get("genres", [])})
+    app_cache.set(key, result.model_dump(mode="json"), expire=config.discover_cache_seconds)
+    return result
+
+
+# Series episodes: every season and episode of a show, specials excluded.
+# Cached like discover, since a season list changes only when TMDB adds an
+# episode, days apart.
+
+ENDPOINT_TV: str = "tv"
+ENDPOINT_SEASON: str = "season"
+ENDPOINT_EPISODES: str = "episodes"
+PARAM_APPEND_TO_RESPONSE: str = "append_to_response"
+APPEND_SEPARATOR: str = ","
+# TMDB accepts at most this many appended sub-requests per call.
+TMDB_APPEND_MAX_SEASONS: int = 20
+SPECIALS_SEASON_NUMBER: int = 0
+
+FIELD_SEASONS: str = "seasons"
+FIELD_EPISODES: str = "episodes"
+FIELD_STATUS: str = "status"
+FIELD_NEXT_EPISODE: str = "next_episode_to_air"
+FIELD_SEASON_NUMBER: str = "season_number"
+FIELD_EPISODE_NUMBER: str = "episode_number"
+FIELD_NAME: str = "name"
+FIELD_AIR_DATE: str = "air_date"
+FIELD_OVERVIEW: str = "overview"
+FIELD_STILL_PATH: str = "still_path"
+FIELD_RUNTIME: str = "runtime"
+FIELD_EPISODE_COUNT: str = "episode_count"
+FIELD_POSTER_PATH: str = "poster_path"
+
+
+def _season_key(season_number: int) -> str:
+    """The path suffix TMDB uses both in URLs and as the appended-response key."""
+    return f"{ENDPOINT_SEASON}/{season_number}"
+
+
+def _to_episode(raw: dict[str, Any]) -> Episode:
+    return Episode(
+        season=raw[FIELD_SEASON_NUMBER],
+        episode=raw[FIELD_EPISODE_NUMBER],
+        title=raw.get(FIELD_NAME) or "",
+        air_date=raw.get(FIELD_AIR_DATE) or None,
+        overview=raw.get(FIELD_OVERVIEW) or "",
+        still_path=raw.get(FIELD_STILL_PATH),
+        runtime_minutes=raw.get(FIELD_RUNTIME),
+    )
+
+
+def _to_season(raw: dict[str, Any]) -> Season:
+    return Season(
+        season=raw[FIELD_SEASON_NUMBER],
+        name=raw.get(FIELD_NAME) or "",
+        episode_count=raw.get(FIELD_EPISODE_COUNT) or 0,
+        air_date=raw.get(FIELD_AIR_DATE) or None,
+        poster_path=raw.get(FIELD_POSTER_PATH),
+        overview=raw.get(FIELD_OVERVIEW) or "",
+    )
+
+
+def _fetch_series_with_seasons(
+    series_id: int, season_numbers: list[int]
+) -> tuple[dict[str, Any], dict[int, dict[str, Any]]]:
+    """Refetches the series with every season appended, one round trip."""
+    series_path: str = f"{ENDPOINT_TV}/{series_id}"
+    appended: str = APPEND_SEPARATOR.join(_season_key(n) for n in season_numbers)
+    data: dict[str, Any] = _tmdb_get(series_path, {PARAM_APPEND_TO_RESPONSE: appended})
+    return data, {n: data.get(_season_key(n)) or {} for n in season_numbers}
+
+
+def _fetch_seasons_individually(
+    series_id: int, season_numbers: list[int]
+) -> dict[int, dict[str, Any]]:
+    series_path: str = f"{ENDPOINT_TV}/{series_id}"
+    return {n: _tmdb_get(f"{series_path}/{_season_key(n)}", {}) for n in season_numbers}
+
+
+def get_series_episodes(series_id: int) -> SeriesEpisodesResponse:
+    """Every season and episode of a show in (season, episode) order, specials dropped."""
+    key = (CACHE_NAMESPACE_DISCOVER, ENDPOINT_EPISODES, series_id, config.target_language)
+    cached = app_cache.get(key)
+    if cached is not None:
+        return SeriesEpisodesResponse.model_validate(cached)
+
+    series: dict[str, Any] = _tmdb_get(f"{ENDPOINT_TV}/{series_id}", {})
+    season_summaries: list[dict[str, Any]] = sorted(
+        (
+            raw
+            for raw in series.get(FIELD_SEASONS, [])
+            if raw.get(FIELD_SEASON_NUMBER) != SPECIALS_SEASON_NUMBER
+        ),
+        key=lambda raw: raw[FIELD_SEASON_NUMBER],
+    )
+    season_numbers: list[int] = [raw[FIELD_SEASON_NUMBER] for raw in season_summaries]
+
+    season_details: dict[int, dict[str, Any]]
+    if not season_numbers:
+        season_details = {}
+    elif len(season_numbers) <= TMDB_APPEND_MAX_SEASONS:
+        series, season_details = _fetch_series_with_seasons(series_id, season_numbers)
+    else:
+        season_details = _fetch_seasons_individually(series_id, season_numbers)
+
+    episodes: list[Episode] = [
+        _to_episode(raw)
+        for n in season_numbers
+        for raw in sorted(
+            season_details[n].get(FIELD_EPISODES, []), key=lambda raw: raw[FIELD_EPISODE_NUMBER]
+        )
+    ]
+    next_raw: dict[str, Any] | None = series.get(FIELD_NEXT_EPISODE)
+    result = SeriesEpisodesResponse(
+        tmdb_id=series_id,
+        seasons=[_to_season(raw) for raw in season_summaries],
+        episodes=episodes,
+        next_episode=_to_episode(next_raw) if next_raw else None,
+        status=series.get(FIELD_STATUS) or "",
+    )
     app_cache.set(key, result.model_dump(mode="json"), expire=config.discover_cache_seconds)
     return result

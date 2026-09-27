@@ -5,7 +5,7 @@ from typing import Any
 import qbittorrentapi
 from fastapi import APIRouter, Request
 from fastapi import status as fastapi_status
-from medialab_contracts import MediaType, TorrentSearchScope
+from medialab_contracts import MediaType, SeriesEpisodesResponse, TorrentSearchScope
 from pydantic import ValidationError
 
 from torrent_downloader.core.config import config
@@ -35,10 +35,12 @@ from torrent_downloader.services.qbittorrent import (
     union_by_url,
 )
 from torrent_downloader.services.tmdb import (
+    TmdbUnavailableError,
     extract_media_type,
     extract_title,
     extract_year,
     get_movie_details,
+    get_series_episodes,
     get_tv_details,
     search_tmdb_multi,
 )
@@ -213,3 +215,27 @@ def api_get_tv_details(request: Request, series_id: int) -> TmdbMediaDetailRespo
     if not raw:
         return TmdbMediaDetailResponse(status="error", message="TV series not found.", data=None)
     return TmdbMediaDetailResponse(status="success", message="", data=raw)
+
+
+@router.get(
+    "/tmdb/show/{series_id}/episodes",
+    response_model=SeriesEpisodesResponse,
+    status_code=fastapi_status.HTTP_200_OK,
+    summary="Returns every season and episode of a TV series by ID.",
+    responses={
+        **_SEARCH_ERROR_RESPONSES,
+        503: {"model": ErrorResponse, "description": "TMDB unconfigured or unavailable."},
+    },
+)
+@limiter.limit(RATE_LIMIT_SEARCH)
+def api_get_series_episodes(request: Request, series_id: int) -> SeriesEpisodesResponse:
+    """Seasons and episodes (specials excluded), the next episode to air and the show status."""
+    try:
+        return get_series_episodes(series_id)
+    except TmdbUnavailableError as error:
+        app_logger.warning(f"Series episodes request failed: {error}")
+        raise AppException(
+            status_code=fastapi_status.HTTP_503_SERVICE_UNAVAILABLE,
+            code=ErrorCode.TMDB_UNAVAILABLE,
+            detail="TMDB is unavailable.",
+        ) from error

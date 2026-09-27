@@ -7,6 +7,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- `GET /search/tmdb/show/{tmdb_id}/episodes` returns every season and
+  episode of a show (specials excluded) as a contracts
+  `SeriesEpisodesResponse`, with the next episode to air and the show status.
+  Shows with at most 20 seasons fetch every season in one appended TMDB call;
+  larger shows fetch one season per call. Cached for `discover_cache_seconds`;
+  `DELETE /cache` clears it.
+
+### Changed
+
+- `medialab-contracts` pin bumped to v0.11.0.
+
 ## [1.16.0] - 2026-09-27
 
 ### Added
