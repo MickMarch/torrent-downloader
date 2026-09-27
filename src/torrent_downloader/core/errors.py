@@ -19,6 +19,7 @@ class ErrorCode(str, Enum):
     QB_UNAVAILABLE = "QB_UNAVAILABLE"
     VPN_NOT_BOUND = "VPN_NOT_BOUND"
     TRANSFER_NOT_FOUND = "TRANSFER_NOT_FOUND"
+    TMDB_UNAVAILABLE = "TMDB_UNAVAILABLE"
 
 
 class AppException(Exception):

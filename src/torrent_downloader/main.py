@@ -16,7 +16,7 @@ from torrent_downloader.core.errors import AppException, ErrorCode
 from torrent_downloader.core.limiter import limiter
 from torrent_downloader.core.logger import app_logger
 from torrent_downloader.core.middleware import RequestLoggingMiddleware
-from torrent_downloader.routers import search, settings, system, transfers
+from torrent_downloader.routers import discover, search, settings, system, transfers
 
 app: FastAPI = FastAPI(
     title="Torrent Downloader API",
@@ -34,6 +34,7 @@ app: FastAPI = FastAPI(
         {"name": "System", "description": "Health, storage, and cache management."},
         {"name": "Search", "description": "TMDB metadata lookup and torrent search."},
         {"name": "Transfers", "description": "Download submission and transfer management."},
+        {"name": "Discover", "description": "Trending and by-genre titles from TMDB."},
     ],
 )
 app.state.limiter = limiter
@@ -88,6 +89,7 @@ app.include_router(system.router, prefix=API_PREFIX)
 app.include_router(settings.router, prefix=API_PREFIX)
 app.include_router(search.router, prefix=API_PREFIX, dependencies=[Depends(verify_api_key)])
 app.include_router(transfers.router, prefix=API_PREFIX, dependencies=[Depends(verify_api_key)])
+app.include_router(discover.router, prefix=API_PREFIX, dependencies=[Depends(verify_api_key)])
 
 
 def custom_openapi() -> dict:

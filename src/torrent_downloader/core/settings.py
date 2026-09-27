@@ -19,11 +19,17 @@ from medialab_contracts import (
     SettingView,
 )
 
-from torrent_downloader.core.config import AppConfig, config
+from torrent_downloader.core.config import (
+    DISCOVER_CACHE_SECONDS_MAX,
+    DISCOVER_CACHE_SECONDS_MIN,
+    AppConfig,
+    config,
+)
 from torrent_downloader.core.logger import app_logger
 from torrent_downloader.services.language import LanguageFilter
 
 _APPLIES_NEXT_SEARCH = "next search"
+_APPLIES_NEXT_CACHE_WRITE = "next cache write"
 
 SETTINGS: tuple[SettingSpec, ...] = (
     SettingSpec(
@@ -72,7 +78,15 @@ SETTINGS: tuple[SettingSpec, ...] = (
         min=0,
         max=86400,
         description="How long search results stay cached.",
-        applies="next cache write",
+        applies=_APPLIES_NEXT_CACHE_WRITE,
+    ),
+    SettingSpec(
+        key="discover_cache_seconds",
+        type=SettingType.INT,
+        min=DISCOVER_CACHE_SECONDS_MIN,
+        max=DISCOVER_CACHE_SECONDS_MAX,
+        description="How long trending, by-genre and genre lists from TMDB stay cached.",
+        applies=_APPLIES_NEXT_CACHE_WRITE,
     ),
 )
 

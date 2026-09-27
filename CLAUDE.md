@@ -60,8 +60,9 @@ applied on `include_router` (system routes per-route so `/health` stays
 public). `slowapi` limits in `core/limiter.py` (`RATE_LIMIT_DEFAULT`,
 `RATE_LIMIT_SEARCH`), `/health` exempt. `RequestLoggingMiddleware` adds
 `X-Request-ID`. Errors are `AppException` + `ErrorCode` (extends the contracts
-`CommonErrorCode`). `diskcache` for TMDB (`@app_cache.memoize`) and search
-results (explicit get/set). The bound VPN interface name is logged but kept out
+`CommonErrorCode`). `diskcache` for TMDB search/details (`@app_cache.memoize`),
+discover and genre lists (explicit get/set, so `discover_cache_seconds` is read
+at write time) and search results (explicit get/set). The bound VPN interface name is logged but kept out
 of the 403 body and `/health` (public; on VPN drop it is often the LAN adapter).
 
 ## Module layout
@@ -74,7 +75,7 @@ src/torrent_downloader/
 │                language (audio language parse + AUDIO_LANGUAGE_FILTER policy),
 │                tmdb, source (source-URL classification + magnet scraping), storage
 ├── schemas/     request/response models; errors re-exports contracts ErrorResponse
-├── routers/     system, settings, search, transfers (registered in main.py under /api/v1)
+├── routers/     system, settings, search, discover, transfers (registered in main.py under /api/v1)
 └── main.py      app, middleware, exception handlers, custom OpenAPI (/health unauthenticated)
 ```
 

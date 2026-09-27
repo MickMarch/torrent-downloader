@@ -8,6 +8,14 @@ from torrent_downloader.services.language import LanguageFilter
 VPN_INTERFACE_SEPARATOR: str = ","
 DEFAULT_VPN_INTERFACES: str = "NordLynx"
 
+SECONDS_PER_HOUR: int = 3600
+HOURS_PER_DAY: int = 24
+DAYS_PER_WEEK: int = 7
+SECONDS_PER_DAY: int = SECONDS_PER_HOUR * HOURS_PER_DAY
+DISCOVER_CACHE_SECONDS_DEFAULT: int = SECONDS_PER_DAY
+DISCOVER_CACHE_SECONDS_MIN: int = SECONDS_PER_HOUR
+DISCOVER_CACHE_SECONDS_MAX: int = SECONDS_PER_DAY * DAYS_PER_WEEK
+
 
 class AppConfig(BaseSettings):
     """Application configuration parameters."""
@@ -32,6 +40,8 @@ class AppConfig(BaseSettings):
 
     cache_directory: str = Field(default=".cache")
     cache_expiration_seconds: int = Field(default=3600)
+    # Trending, discover-by-genre and genre lists; read at each cache write.
+    discover_cache_seconds: int = Field(default=DISCOVER_CACHE_SECONDS_DEFAULT)
     # Runtime setting overrides (see core/settings.py); lives on the cache volume.
     settings_path: str = Field(default=".cache/settings.json")
 
