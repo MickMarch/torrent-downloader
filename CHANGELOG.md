@@ -7,6 +7,22 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- `GET /search/torrents/pick?query=&season=&episode=&resolution=[&min_seeders=&alt_query=]`
+  runs the show search for one episode and returns the single `TorrentResult`
+  the pick rule chooses, or `404 NO_CANDIDATE`. The rule (`pick_best`, a pure
+  function over the grouped results) keeps only releases naming exactly that
+  episode (no season or complete-series packs), drops those below
+  `min_seeders` (default: the configured `minimum_seeders`), takes the
+  requested resolution bucket or failing that the next lower one (`4K` ->
+  `1080p` -> `720p`, never `Other`), then the most seeded release, ties broken
+  by the larger file. `resolution` outside those buckets is `422 INVALID_INPUT`.
+
+### Changed
+
+- `medialab-contracts` pin bumped to v1.0.0.
+
 ## [1.18.0] - 2026-09-27
 
 ### Added

@@ -14,6 +14,7 @@ from qbittorrentapi.exceptions import APIConnectionError
 from torrent_downloader.core.cache import app_cache
 from torrent_downloader.core.config import config
 from torrent_downloader.core.logger import app_logger
+from torrent_downloader.schemas.torrents import TorrentResult
 from torrent_downloader.schemas.transfers import TransferInfo
 
 STATUS_FILTER_ALL: str = "all"
@@ -42,6 +43,10 @@ RES_GROUP_720: str = "720p"
 # Catch-all for releases with no parseable or unrecognised resolution (common
 # for older/SD TV, e.g. HDTV/DVDRip rips) so they are never silently dropped.
 RES_GROUP_OTHER: str = "Other"
+# Buckets an automatic pick may draw from, highest first. A pick falls
+# through to the next lower bucket when the requested one is empty and never
+# reaches ``Other``.
+PICK_RESOLUTION_ORDER: tuple[str, ...] = (RES_GROUP_4K, RES_GROUP_1080, RES_GROUP_720)
 
 MAGNET_URL_PREFIX: str = "magnet:?"
 TORRENT_FILE_SUFFIX: str = ".torrent"
@@ -449,3 +454,41 @@ def group_by_resolution(
             grouped[RES_GROUP_OTHER].append(result)
 
     return {k: v for k, v in grouped.items() if v}
+
+
+def is_exact_episode(name: str, season: int, episode: int) -> bool:
+    """Whether a release name targets exactly one episode: a single parsed
+    season equal to ``season`` and a single parsed episode equal to ``episode``.
+    Season packs, multi-season ranges, multi-episode releases and complete
+    series packs all fail this test."""
+    parsed: dict[str, Any] = PTN.parse(name)
+    return _parsed_seasons(parsed.get("season")) == [season] and parsed.get("episode") == episode
+
+
+def pick_best(
+    grouped: dict[str, list[TorrentResult]],
+    *,
+    season: int,
+    episode: int,
+    resolution: str,
+    min_seeders: int,
+) -> TorrentResult | None:
+    """The automatic pick rule over grouped episode search results.
+
+    Pure: no I/O and ``grouped`` is not modified. In order: only releases
+    naming exactly this episode, only those with at least ``min_seeders``,
+    the ``resolution`` bucket or failing that each lower bucket in
+    ``PICK_RESOLUTION_ORDER`` (never ``Other``), then the most seeded release,
+    ties broken by the larger file. ``None`` when nothing qualifies.
+    """
+    start: int = PICK_RESOLUTION_ORDER.index(resolution)
+    for bucket in PICK_RESOLUTION_ORDER[start:]:
+        candidates: list[TorrentResult] = [
+            result
+            for result in grouped.get(bucket, [])
+            if result.nbSeeders >= min_seeders
+            and is_exact_episode(result.fileName, season, episode)
+        ]
+        if candidates:
+            return max(candidates, key=lambda result: (result.nbSeeders, result.fileSize))
+    return None
