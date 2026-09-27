@@ -20,6 +20,7 @@ class ErrorCode(str, Enum):
     VPN_NOT_BOUND = "VPN_NOT_BOUND"
     TRANSFER_NOT_FOUND = "TRANSFER_NOT_FOUND"
     TMDB_UNAVAILABLE = "TMDB_UNAVAILABLE"
+    NO_CANDIDATE = "NO_CANDIDATE"
 
 
 class AppException(Exception):

@@ -3,7 +3,7 @@
 from typing import Any
 
 import qbittorrentapi
-from fastapi import APIRouter, Request
+from fastapi import APIRouter, Query, Request
 from fastapi import status as fastapi_status
 from medialab_contracts import (
     MediaType,
@@ -27,6 +27,7 @@ from torrent_downloader.schemas.tmdb import (
 from torrent_downloader.schemas.torrents import TorrentResult, TorrentSearchResponse
 from torrent_downloader.services.language import annotate_and_filter
 from torrent_downloader.services.qbittorrent import (
+    PICK_RESOLUTION_ORDER,
     SEARCH_CATEGORY_BY_MEDIA_TYPE,
     build_search_patterns,
     filter_and_sort_results,
@@ -34,6 +35,7 @@ from torrent_downloader.services.qbittorrent import (
     filter_by_year,
     get_torrent_client,
     group_by_resolution,
+    pick_best,
     run_pattern_searches,
     search_torrents,
     split_trailing_year,
@@ -52,6 +54,9 @@ from torrent_downloader.services.tmdb import (
 )
 
 router = APIRouter(prefix="/search", tags=[TAG_SEARCH])
+
+# A pick's seeder floor; 0 means the pipeline's configured minimum is the only floor.
+MIN_SEEDERS_FLOOR: int = 0
 
 
 _SEARCH_ERROR_RESPONSES = {
@@ -125,6 +130,75 @@ def api_search_torrents(
             detail="Invalid season/episode combination for the requested media type.",
         ) from error
 
+    grouped: dict[str, list[TorrentResult]] = _search_grouped(query, alt_query, scope)
+    return TorrentSearchResponse(status="success", message="", data=grouped)
+
+
+@router.get(
+    "/torrents/pick",
+    response_model=TorrentResult,
+    status_code=fastapi_status.HTTP_200_OK,
+    summary="Runs an episode search and returns the one release the pick rule chooses.",
+    responses={
+        **_SEARCH_ERROR_RESPONSES,
+        404: {"model": ErrorResponse, "description": "No release satisfies the pick rule."},
+        503: {"model": ErrorResponse, "description": "qBittorrent client unavailable."},
+    },
+)
+@limiter.limit(RATE_LIMIT_SEARCH)
+def api_pick_torrent(
+    request: Request,
+    query: str,
+    season: int,
+    episode: int,
+    resolution: str,
+    min_seeders: int | None = Query(default=None, ge=MIN_SEEDERS_FLOOR),
+    alt_query: str | None = None,
+) -> TorrentResult:
+    """The same show search as ``/torrents`` for one episode, reduced to a single
+    release by ``pick_best``. ``resolution`` is one of the pick buckets;
+    ``min_seeders`` defaults to the configured minimum.
+    """
+    if resolution not in PICK_RESOLUTION_ORDER:
+        raise AppException(
+            status_code=fastapi_status.HTTP_422_UNPROCESSABLE_CONTENT,
+            code=ErrorCode.INVALID_INPUT,
+            detail=f"resolution must be one of: {', '.join(PICK_RESOLUTION_ORDER)}.",
+        )
+    try:
+        scope: TorrentSearchScope = TorrentSearchScope(
+            media_type=MediaType.SHOW, season=season, episode=episode
+        )
+    except ValidationError as error:
+        raise AppException(
+            status_code=fastapi_status.HTTP_422_UNPROCESSABLE_CONTENT,
+            code=ErrorCode.INVALID_INPUT,
+            detail="Invalid season/episode.",
+        ) from error
+
+    grouped: dict[str, list[TorrentResult]] = _search_grouped(query, alt_query, scope)
+    picked: TorrentResult | None = pick_best(
+        grouped,
+        season=season,
+        episode=episode,
+        resolution=resolution,
+        min_seeders=config.minimum_seeders if min_seeders is None else min_seeders,
+    )
+    if picked is None:
+        raise AppException(
+            status_code=fastapi_status.HTTP_404_NOT_FOUND,
+            code=ErrorCode.NO_CANDIDATE,
+            detail="No release satisfies the pick rule for this episode.",
+        )
+    return picked
+
+
+def _search_grouped(
+    query: str, alt_query: str | None, scope: TorrentSearchScope
+) -> dict[str, list[TorrentResult]]:
+    """The full torrent search for a scope, grouped by resolution: the primary
+    query, the alternate spelling when it differs, and for movies the bare-title
+    pass, unioned by URL. Raises 503 when qBittorrent is unreachable."""
     client: qbittorrentapi.Client | None = get_torrent_client()
     if not client:
         raise AppException(
@@ -143,12 +217,10 @@ def api_search_torrents(
         if scope.media_type is MediaType.MOVIE:
             batches.append(_movie_bare_title_pass(client, q, scope))
     scoped_results: list[dict[str, Any]] = union_by_url(batches)
-    grouped: dict[str, list[TorrentResult]] = {
+    return {
         resolution: [TorrentResult(**item) for item in items]
         for resolution, items in group_by_resolution(scoped_results).items()
     }
-
-    return TorrentSearchResponse(status="success", message="", data=grouped)
 
 
 def _prefetch_patterns(
