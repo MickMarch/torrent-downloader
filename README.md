@@ -54,6 +54,7 @@ All paths under `/api/v1`. Every endpoint except `/health` requires
 | `GET` | `/search/tmdb?query=` | TMDB multi-search (movies + shows). |
 | `GET` | `/search/tmdb/movie/{tmdb_id}` | TMDB movie detail. |
 | `GET` | `/search/tmdb/show/{tmdb_id}` | TMDB show detail, including the season list. |
+| `GET` | `/search/tmdb/show/{tmdb_id}/episodes` | Every season and episode of a show (specials excluded) as `SeriesEpisodesResponse`, with the next episode to air and the show status. Cached for `DISCOVER_CACHE_SECONDS`. `503 TMDB_UNAVAILABLE` if TMDB is unconfigured or failing. |
 | `GET` | `/search/torrents?query=&media_type=[&season=&episode=&alt_query=]` | qBittorrent plugin search grouped by resolution. `media_type` required; shows accept `season`/`episode`, which refine the pattern and filter results to that scope; `alt_query` is a second spelling of the title whose hits are unioned in. Each result carries `languages` and `multiAudio` parsed from its name; `AUDIO_LANGUAGE_FILTER` drops foreign-tagged releases (see `.env.example`). |
 | `GET` | `/discover/{media_type}?[genre=&page=]` | One TMDB page as `DiscoverResponse` (`media_type` is `movie` or `show`): trending this week, or with `genre` the most popular titles in it with a minimum vote count. Cached for `DISCOVER_CACHE_SECONDS`. `503 TMDB_UNAVAILABLE` if TMDB is unconfigured or failing. |
 | `GET` | `/discover/{media_type}/genres` | TMDB genre list as `GenresResponse`, cached like discover. |
