@@ -142,5 +142,52 @@ class TestScopedSearchUnion:
         )
         scope = TorrentSearchScope(media_type=MediaType.SHOW, season=6)
         results = qb.search_torrents(mocker.MagicMock(), "Show", scope)
-        assert [c.args[1] for c in run.call_args_list] == ["Show S06", "Show Season 6", "Show"]
+        assert sorted(c.args[1] for c in run.call_args_list) == [
+            "Show",
+            "Show S06",
+            "Show Season 6",
+        ]
         assert [r["fileUrl"] for r in results] == ["magnet:?a", "magnet:?b"]
+
+
+class TestRunPatternSearches:
+    def test_cached_patterns_skip_the_plugins_and_order_is_kept(self, mocker) -> None:
+        from torrent_downloader.services import qbittorrent as qb
+
+        cache: dict[str, list] = {qb._pattern_cache_key("B", "movies"): [{"fileUrl": "b"}]}
+        mocker.patch.object(qb.app_cache, "get", side_effect=lambda k: cache.get(k))
+        mocker.patch.object(
+            qb.app_cache, "set", side_effect=lambda k, v, expire: cache.update({k: v})
+        )
+        run = mocker.patch.object(
+            qb, "execute_plugin_search", side_effect=lambda _c, p, _cat: [{"fileUrl": p.lower()}]
+        )
+        out = qb.run_pattern_searches(mocker.MagicMock(), ["A", "B", "C", "A"], "movies")
+        assert list(out) == ["B", "A", "C"] or set(out) == {"A", "B", "C"}
+        assert out["B"] == [{"fileUrl": "b"}]
+        assert sorted(c.args[1] for c in run.call_args_list) == ["A", "C"]
+        assert qb._pattern_cache_key("A", "movies") in cache
+
+    def test_patterns_run_concurrently(self, mocker) -> None:
+        import threading
+        import time
+
+        from torrent_downloader.services import qbittorrent as qb
+
+        mocker.patch.object(qb.app_cache, "get", return_value=None)
+        mocker.patch.object(qb.app_cache, "set")
+        mocker.patch.object(qb.config, "search_concurrency", 4)
+        seen_threads: set[int] = set()
+
+        def slow(_c, p, _cat):
+            seen_threads.add(threading.get_ident())
+            time.sleep(0.2)
+            return [{"fileUrl": p}]
+
+        mocker.patch.object(qb, "execute_plugin_search", side_effect=slow)
+        started = time.monotonic()
+        out = qb.run_pattern_searches(mocker.MagicMock(), ["P1", "P2", "P3", "P4"], "tv")
+        elapsed = time.monotonic() - started
+        assert len(out) == 4
+        assert elapsed < 0.6
+        assert len(seen_threads) > 1

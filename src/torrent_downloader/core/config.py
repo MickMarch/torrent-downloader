@@ -26,6 +26,9 @@ class AppConfig(BaseSettings):
     tmdb_api_key: str | None = Field(default=None)
 
     search_timeout_seconds: int = Field(default=15)
+    # Plugin searches run in parallel up to this many at once (a scoped search
+    # with an alternate title can need four patterns).
+    search_concurrency: int = Field(default=4, ge=1)
 
     cache_directory: str = Field(default=".cache")
     cache_expiration_seconds: int = Field(default=3600)
