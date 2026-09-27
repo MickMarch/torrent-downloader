@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.18.0] - 2026-09-27
+
 ### Added
 
 - `GET /search/tmdb/{media_type}/{tmdb_id}/videos?season=` returns a title's
