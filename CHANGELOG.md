@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.16.0] - 2026-09-27
+
 ### Added
 
 - `GET /discover/{media_type}?genre=&page=` returns one TMDB page as a
