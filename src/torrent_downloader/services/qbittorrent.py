@@ -3,6 +3,7 @@
 import re
 import time
 from collections.abc import Sequence
+from concurrent.futures import ThreadPoolExecutor
 from typing import Any
 
 import PTN
@@ -338,35 +339,56 @@ def execute_plugin_search(
     return results.get("results", [])
 
 
-def _scope_cache_key(query: str, scope: TorrentSearchScope) -> str:
-    """Builds a cache key that varies by query and requested season/episode.
+def _pattern_cache_key(pattern: str, category: str) -> str:
+    """Raw plugin results are cached per pattern and category, so every query
+    that shares a pattern (a season scope and its bare title, a TMDB title and
+    a typed one) reuses one plugin run."""
+    return f"torrent_search_{category}_{pattern.casefold()}"
 
-    Without the season/episode in the key a season-2 search would return a cached
-    season-5 result set for the same show title.
-    """
-    return f"torrent_search_{query}_{scope.media_type.value}_{scope.season}_{scope.episode}"
+
+def run_pattern_searches(
+    client: qbittorrentapi.Client, patterns: Sequence[str], category: str
+) -> dict[str, list[dict[str, Any]]]:
+    """Raw results per pattern. Cached patterns are served from the cache; the
+    rest run concurrently, so wall time is one search timeout, not one per
+    pattern. qBittorrent runs several search jobs at once."""
+    results: dict[str, list[dict[str, Any]]] = {}
+    pending: list[str] = []
+    for pattern in dict.fromkeys(patterns):
+        cached: Any = app_cache.get(_pattern_cache_key(pattern, category))
+        if cached is not None:
+            app_logger.info(f"Returning cached results for pattern: '{pattern}'")
+            results[pattern] = cached
+        else:
+            pending.append(pattern)
+    if not pending:
+        return results
+
+    def run(pattern: str) -> list[dict[str, Any]]:
+        app_logger.info(f"Initiating new search for pattern: '{pattern}' category: '{category}'")
+        found = execute_plugin_search(client, pattern, category)
+        app_logger.info(f"Search for '{pattern}' found {len(found)} results.")
+        app_cache.set(
+            _pattern_cache_key(pattern, category), found, expire=config.cache_expiration_seconds
+        )
+        return found
+
+    workers = max(1, min(config.search_concurrency, len(pending)))
+    with ThreadPoolExecutor(max_workers=workers) as pool:
+        for pattern, found in zip(pending, pool.map(run, pending), strict=True):
+            results[pattern] = found
+    return results
 
 
 def search_torrents(
     client: qbittorrentapi.Client, query: str, scope: TorrentSearchScope
 ) -> list[dict[str, Any]]:
-    """Returns cached torrent results or executes a new scope-aware search."""
-    cache_key: str = _scope_cache_key(query, scope)
-    cached_results: Any = app_cache.get(cache_key)
-
-    if cached_results is not None:
-        app_logger.info(f"Returning cached results for query: '{query}' scope: {cache_key}")
-        return cached_results
-
+    """Union of the raw results for every pattern the scope needs."""
     category: str = SEARCH_CATEGORY_BY_MEDIA_TYPE[scope.media_type]
-    batches: list[list[dict[str, Any]]] = []
-    for pattern in build_search_patterns(query, scope):
-        app_logger.info(f"Initiating new search for pattern: '{pattern}' category: '{category}'")
-        batches.append(execute_plugin_search(client, pattern, category))
-    parsed_results: list[dict[str, Any]] = union_by_url(batches)
-
-    app_logger.info(f"Search completed. Found {len(parsed_results)} total results.")
-    app_cache.set(cache_key, parsed_results, expire=config.cache_expiration_seconds)
+    patterns = build_search_patterns(query, scope)
+    by_pattern = run_pattern_searches(client, patterns, category)
+    parsed_results: list[dict[str, Any]] = union_by_url([by_pattern[p] for p in patterns])
+    app_logger.info(f"Search for '{query}' completed. {len(parsed_results)} total results.")
     return parsed_results
 
 

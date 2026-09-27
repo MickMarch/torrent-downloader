@@ -34,6 +34,7 @@ def _patch_pipeline(mocker: MockerFixture, results: list[dict[str, Any]]) -> Non
     mocker.patch(
         "torrent_downloader.routers.search.get_torrent_client", return_value=mocker.MagicMock()
     )
+    mocker.patch("torrent_downloader.routers.search.run_pattern_searches", return_value={})
     mocker.patch("torrent_downloader.routers.search.search_torrents", return_value=results)
     mocker.patch("torrent_downloader.routers.search.filter_and_sort_results", return_value=results)
 
@@ -122,6 +123,7 @@ class TestMovieBareTitlePass:
             "torrent_downloader.routers.search.get_torrent_client",
             return_value=mocker.MagicMock(),
         )
+        mocker.patch("torrent_downloader.routers.search.run_pattern_searches", return_value={})
         by_query = {
             "Storks 2016": [
                 _make_torrent("Storks.2016.2160p.WEB.x265", 95, "magnet:?xt=urn:btih:ccc"),
@@ -158,6 +160,7 @@ class TestAltQuery:
             "torrent_downloader.routers.search.get_torrent_client",
             return_value=mocker.MagicMock(),
         )
+        mocker.patch("torrent_downloader.routers.search.run_pattern_searches", return_value={})
         by_query = {
             "Lee Cronin's The Mummy 2026": [
                 _make_torrent("Lee.Cronins.The.Mummy.2026.1080p", 40, "magnet:?xt=urn:btih:aaa")
@@ -195,3 +198,29 @@ class TestAltQuery:
             params={"query": "The Wire", "media_type": "show", "alt_query": "the wire "},
         )
         assert search.call_count == 1
+
+
+class TestPrefetch:
+    def test_every_pattern_of_every_query_is_prefetched_once(
+        self, client: TestClient, mocker: MockerFixture
+    ) -> None:
+        mocker.patch(
+            "torrent_downloader.routers.search.get_torrent_client",
+            return_value=mocker.MagicMock(),
+        )
+        prefetch = mocker.patch(
+            "torrent_downloader.routers.search.run_pattern_searches", return_value={}
+        )
+        mocker.patch("torrent_downloader.routers.search.search_torrents", return_value=[])
+        client.get(
+            SEARCH_URL,
+            params={"query": "Storks 2016", "media_type": "movie", "alt_query": "The Storks 2016"},
+        )
+        prefetch.assert_called_once()
+        assert prefetch.call_args.args[1] == [
+            "Storks 2016",
+            "Storks",
+            "The Storks 2016",
+            "The Storks",
+        ]
+        assert prefetch.call_args.args[2] == "movies"

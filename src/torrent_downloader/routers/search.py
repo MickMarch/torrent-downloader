@@ -22,11 +22,14 @@ from torrent_downloader.schemas.tmdb import (
 from torrent_downloader.schemas.torrents import TorrentResult, TorrentSearchResponse
 from torrent_downloader.services.language import annotate_and_filter
 from torrent_downloader.services.qbittorrent import (
+    SEARCH_CATEGORY_BY_MEDIA_TYPE,
+    build_search_patterns,
     filter_and_sort_results,
     filter_by_scope,
     filter_by_year,
     get_torrent_client,
     group_by_resolution,
+    run_pattern_searches,
     search_torrents,
     split_trailing_year,
     union_by_url,
@@ -125,6 +128,7 @@ def api_search_torrents(
     queries: list[str] = [query]
     if alt_query and alt_query.strip().casefold() != query.strip().casefold():
         queries.append(alt_query.strip())
+    _prefetch_patterns(client, queries, scope)
     batches: list[list[dict[str, Any]]] = []
     for q in queries:
         batches.append(_search_pipeline(client, q, scope))
@@ -137,6 +141,19 @@ def api_search_torrents(
     }
 
     return TorrentSearchResponse(status="success", message="", data=grouped)
+
+
+def _prefetch_patterns(
+    client: qbittorrentapi.Client, queries: list[str], scope: TorrentSearchScope
+) -> None:
+    """Runs every pattern the pipeline will ask for in one concurrent batch, so
+    the sequential passes below all hit the cache."""
+    patterns: list[str] = []
+    for q in queries:
+        patterns.extend(build_search_patterns(q, scope))
+        if scope.media_type is MediaType.MOVIE and (split := split_trailing_year(q)):
+            patterns.extend(build_search_patterns(split[0], scope))
+    run_pattern_searches(client, patterns, SEARCH_CATEGORY_BY_MEDIA_TYPE[scope.media_type])
 
 
 def _search_pipeline(
