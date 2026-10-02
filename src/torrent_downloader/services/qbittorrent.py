@@ -4,6 +4,7 @@ import re
 import time
 from collections.abc import Sequence
 from concurrent.futures import ThreadPoolExecutor
+from contextvars import ContextVar
 from typing import Any
 
 import PTN
@@ -16,6 +17,13 @@ from torrent_downloader.core.config import config
 from torrent_downloader.core.logger import app_logger
 from torrent_downloader.schemas.torrents import TorrentResult
 from torrent_downloader.schemas.transfers import TransferInfo
+
+search_timeout_override: ContextVar[int | None] = ContextVar(
+    "search_timeout_override", default=None
+)
+"""A per-request search timeout, set by a route for the span of one search.
+When set, patterns are run fresh rather than served from the cache, since a
+caller asking for a longer wait wants more than the short run found."""
 
 STATUS_FILTER_ALL: str = "all"
 STATUS_FILTER_SEEDING: str = "seeding"
@@ -309,14 +317,18 @@ def filter_by_scope(
 
 
 def execute_plugin_search(
-    client: qbittorrentapi.Client, query: str, category: str
+    client: qbittorrentapi.Client,
+    query: str,
+    category: str,
+    timeout_seconds: int | None = None,
 ) -> list[dict[str, Any]]:
     """Runs the qBittorrent plugin search loop and returns raw results.
 
-    Polls until all plugins report completion or the configured timeout is reached,
-    at which point any still-running plugins are forcibly stopped before results
-    are fetched.
+    Polls until all plugins report completion or the timeout is reached (the
+    configured one unless ``timeout_seconds`` is given), at which point any
+    still-running plugins are forcibly stopped before results are fetched.
     """
+    timeout: int = config.search_timeout_seconds if timeout_seconds is None else timeout_seconds
     search_job: dict[str, Any] = client.search_start(
         pattern=query, plugins="all", category=category
     )
@@ -326,11 +338,8 @@ def execute_plugin_search(
 
     while True:
         elapsed: float = time.time() - start_time
-        if elapsed >= config.search_timeout_seconds:
-            app_logger.info(
-                f"Search timeout reached ({config.search_timeout_seconds}s). "
-                "Terminating hanging plugins."
-            )
+        if elapsed >= timeout:
+            app_logger.info(f"Search timeout reached ({timeout}s). Terminating hanging plugins.")
             client.search_stop(search_id=search_id)
             break
 
@@ -359,8 +368,14 @@ def run_pattern_searches(
     pattern. qBittorrent runs several search jobs at once."""
     results: dict[str, list[dict[str, Any]]] = {}
     pending: list[str] = []
+    # Read once here, in the request thread; the pool threads do not see the context.
+    timeout_override: int | None = search_timeout_override.get()
     for pattern in dict.fromkeys(patterns):
-        cached: Any = app_cache.get(_pattern_cache_key(pattern, category))
+        cached: Any = (
+            None
+            if timeout_override is not None
+            else app_cache.get(_pattern_cache_key(pattern, category))
+        )
         if cached is not None:
             app_logger.info(f"Returning cached results for pattern: '{pattern}'")
             results[pattern] = cached
@@ -371,7 +386,7 @@ def run_pattern_searches(
 
     def run(pattern: str) -> list[dict[str, Any]]:
         app_logger.info(f"Initiating new search for pattern: '{pattern}' category: '{category}'")
-        found = execute_plugin_search(client, pattern, category)
+        found = execute_plugin_search(client, pattern, category, timeout_override)
         app_logger.info(f"Search for '{pattern}' found {len(found)} results.")
         app_cache.set(
             _pattern_cache_key(pattern, category), found, expire=config.cache_expiration_seconds
@@ -456,6 +471,14 @@ def group_by_resolution(
     return {k: v for k, v in grouped.items() if v}
 
 
+def is_exact_season_pack(name: str, season: int) -> bool:
+    """Whether a release name targets exactly one whole season: a single parsed
+    season equal to ``season`` and no episode. Single episodes, multi-episode
+    releases, multi-season ranges and complete series packs all fail."""
+    parsed: dict[str, Any] = PTN.parse(name)
+    return _parsed_seasons(parsed.get("season")) == [season] and parsed.get("episode") is None
+
+
 def is_exact_episode(name: str, season: int, episode: int) -> bool:
     """Whether a release name targets exactly one episode: a single parsed
     season equal to ``season`` and a single parsed episode equal to ``episode``.
@@ -469,25 +492,31 @@ def pick_best(
     grouped: dict[str, list[TorrentResult]],
     *,
     season: int,
-    episode: int,
+    episode: int | None,
     resolution: str,
     min_seeders: int,
 ) -> TorrentResult | None:
-    """The automatic pick rule over grouped episode search results.
+    """The automatic pick rule over grouped show search results.
 
     Pure: no I/O and ``grouped`` is not modified. In order: only releases
-    naming exactly this episode, only those with at least ``min_seeders``,
+    naming exactly this episode (or, with ``episode`` unset, exactly this
+    season's pack), only those with at least ``min_seeders``,
     the ``resolution`` bucket or failing that each lower bucket in
     ``PICK_RESOLUTION_ORDER`` (never ``Other``), then the most seeded release,
     ties broken by the larger file. ``None`` when nothing qualifies.
     """
+
+    def targets(name: str) -> bool:
+        if episode is None:
+            return is_exact_season_pack(name, season)
+        return is_exact_episode(name, season, episode)
+
     start: int = PICK_RESOLUTION_ORDER.index(resolution)
     for bucket in PICK_RESOLUTION_ORDER[start:]:
         candidates: list[TorrentResult] = [
             result
             for result in grouped.get(bucket, [])
-            if result.nbSeeders >= min_seeders
-            and is_exact_episode(result.fileName, season, episode)
+            if result.nbSeeders >= min_seeders and targets(result.fileName)
         ]
         if candidates:
             return max(candidates, key=lambda result: (result.nbSeeders, result.fileSize))

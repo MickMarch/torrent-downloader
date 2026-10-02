@@ -108,9 +108,55 @@ class TestPickRoute:
 
 
 class TestPickValidation:
-    def test_missing_episode_is_422(self, client: TestClient, mocker: MockerFixture) -> None:
+    def test_season_only_picks_the_pack(self, client: TestClient, mocker: MockerFixture) -> None:
         _patch_pipeline(mocker, MOCK_RESULTS)
         params = {k: v for k, v in EPISODE_PARAMS.items() if k != "episode"}
+        response = client.get(PICK_URL, params=params)
+        assert response.status_code == 200
+        assert response.json()["fileName"] == SEASON_PACK["fileName"]
+
+    def test_season_only_searches_the_season_scope(
+        self, client: TestClient, mocker: MockerFixture
+    ) -> None:
+        _patch_pipeline(mocker, MOCK_RESULTS)
+        search = mocker.patch(f"{SEARCH_ROUTER}.search_torrents", return_value=MOCK_RESULTS)
+        params = {k: v for k, v in EPISODE_PARAMS.items() if k != "episode"}
+        client.get(PICK_URL, params=params)
+        scope = search.call_args.args[2]
+        assert (scope.season, scope.episode) == (2, None)
+
+    def test_timeout_override_is_active_during_the_search_and_cleared_after(
+        self, client: TestClient, mocker: MockerFixture
+    ) -> None:
+        from torrent_downloader.services import qbittorrent as qb
+
+        seen: list[int | None] = []
+
+        def capture(*_args: Any, **_kwargs: Any) -> list[dict[str, Any]]:
+            seen.append(qb.search_timeout_override.get())
+            return MOCK_RESULTS
+
+        _patch_pipeline(mocker, MOCK_RESULTS)
+        mocker.patch(f"{SEARCH_ROUTER}.search_torrents", side_effect=capture)
+        response = client.get(PICK_URL, params={**EPISODE_PARAMS, "timeout_seconds": 90})
+        assert response.status_code == 200
+        assert seen and seen[0] == 90
+        assert qb.search_timeout_override.get() is None
+
+    def test_timeout_outside_the_setting_bounds_is_422(
+        self, client: TestClient, mocker: MockerFixture
+    ) -> None:
+        _patch_pipeline(mocker, MOCK_RESULTS)
+        for value in (1, 10_000):
+            response = client.get(PICK_URL, params={**EPISODE_PARAMS, "timeout_seconds": value})
+            assert response.status_code == 422, value
+
+    def test_missing_episode_is_422_for_a_movie_style_request(
+        self, client: TestClient, mocker: MockerFixture
+    ) -> None:
+        # Without a season there is no show scope at all.
+        _patch_pipeline(mocker, MOCK_RESULTS)
+        params = {k: v for k, v in EPISODE_PARAMS.items() if k not in ("episode", "season")}
         assert client.get(PICK_URL, params=params).status_code == 422
 
     def test_missing_season_is_422(self, client: TestClient, mocker: MockerFixture) -> None:

@@ -31,6 +31,8 @@ from torrent_downloader.services.language import LanguageFilter
 _APPLIES_NEXT_SEARCH = "next search"
 _APPLIES_NEXT_CACHE_WRITE = "next cache write"
 
+SEARCH_TIMEOUT_SETTING_KEY = "search_timeout_seconds"
+
 SETTINGS: tuple[SettingSpec, ...] = (
     SettingSpec(
         key="target_language",
@@ -57,7 +59,7 @@ SETTINGS: tuple[SettingSpec, ...] = (
         applies=_APPLIES_NEXT_SEARCH,
     ),
     SettingSpec(
-        key="search_timeout_seconds",
+        key=SEARCH_TIMEOUT_SETTING_KEY,
         type=SettingType.INT,
         min=5,
         max=120,
