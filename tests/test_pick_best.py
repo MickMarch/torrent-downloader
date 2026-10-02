@@ -7,6 +7,7 @@ from torrent_downloader.services.qbittorrent import (
     RES_GROUP_720,
     RES_GROUP_1080,
     RES_GROUP_OTHER,
+    is_exact_season_pack,
     pick_best,
 )
 
@@ -31,11 +32,12 @@ def _pick(
     grouped: dict[str, list[TorrentResult]],
     resolution: str = RES_GROUP_1080,
     min_seeders: int = NO_FLOOR,
+    episode: int | None = EPISODE,
 ) -> TorrentResult | None:
     return pick_best(
         grouped,
         season=SEASON,
-        episode=EPISODE,
+        episode=episode,
         resolution=resolution,
         min_seeders=min_seeders,
     )
@@ -153,3 +155,44 @@ class TestNothing:
         grouped = {RES_GROUP_1080: list(results)}
         _pick(grouped)
         assert grouped[RES_GROUP_1080] == results
+
+
+class TestSeasonPackRule:
+    def test_accepts_single_season_pack_spellings(self) -> None:
+        for name in (
+            "The.Wire.S02.1080p.BluRay.x264-GRP",
+            "The.Wire.S02.COMPLETE.1080p.WEB-DL",
+            "The Wire Season 2 1080p",
+            "The.Wire.Season.02.720p",
+        ):
+            assert is_exact_season_pack(name, SEASON), name
+
+    def test_rejects_episodes_other_seasons_ranges_and_series(self) -> None:
+        for name in (
+            "The.Wire.S02E05.1080p.WEB",
+            "The.Wire.S02E01-E05.1080p",
+            "The.Wire.S03.1080p",
+            "The.Wire.S01-S03.1080p.BluRay",
+            "The.Wire.Complete.Series.1080p",
+            "The.Wire.2002.1080p",
+        ):
+            assert not is_exact_season_pack(name, SEASON), name
+
+
+class TestSeasonScope:
+    def test_picks_the_most_seeded_pack_and_never_an_episode(self) -> None:
+        pack = _result("The.Wire.S02.1080p.BluRay", seeders=40)
+        bigger_pack = _result("The.Wire.S02.COMPLETE.1080p.WEB", seeders=90)
+        episode = _result("The.Wire.S02E05.1080p.WEB", seeders=900)
+        grouped = {RES_GROUP_1080: [episode, pack, bigger_pack]}
+        assert _pick(grouped, episode=None) == bigger_pack
+
+    def test_series_pack_is_never_picked_for_a_season(self) -> None:
+        grouped = {RES_GROUP_1080: [_result("The.Wire.S01-S05.1080p", seeders=900)]}
+        assert _pick(grouped, episode=None) is None
+
+    def test_seeder_floor_and_bucket_fallback_apply_to_packs(self) -> None:
+        low = _result("The.Wire.S02.1080p.WEB", seeders=10)
+        lower_bucket = _result("The.Wire.S02.720p.WEB", seeders=60)
+        grouped = {RES_GROUP_1080: [low], RES_GROUP_720: [lower_bucket]}
+        assert _pick(grouped, episode=None, min_seeders=50) == lower_bucket

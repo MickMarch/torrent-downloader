@@ -18,6 +18,7 @@ from torrent_downloader.core.constants import TAG_SEARCH
 from torrent_downloader.core.errors import AppException, ErrorCode
 from torrent_downloader.core.limiter import RATE_LIMIT_SEARCH, limiter
 from torrent_downloader.core.logger import app_logger
+from torrent_downloader.core.settings import SEARCH_TIMEOUT_SETTING_KEY, runtime_settings
 from torrent_downloader.schemas.errors import ErrorResponse
 from torrent_downloader.schemas.tmdb import (
     TmdbMediaDetailResponse,
@@ -37,6 +38,7 @@ from torrent_downloader.services.qbittorrent import (
     group_by_resolution,
     pick_best,
     run_pattern_searches,
+    search_timeout_override,
     search_torrents,
     split_trailing_year,
     union_by_url,
@@ -57,6 +59,8 @@ router = APIRouter(prefix="/search", tags=[TAG_SEARCH])
 
 # A pick's seeder floor; 0 means the pipeline's configured minimum is the only floor.
 MIN_SEEDERS_FLOOR: int = 0
+# A per-request pick timeout is bounded like the setting it overrides.
+_SEARCH_TIMEOUT_SPEC = runtime_settings.spec(SEARCH_TIMEOUT_SETTING_KEY)
 
 
 _SEARCH_ERROR_RESPONSES = {
@@ -138,7 +142,7 @@ def api_search_torrents(
     "/torrents/pick",
     response_model=TorrentResult,
     status_code=fastapi_status.HTTP_200_OK,
-    summary="Runs an episode search and returns the one release the pick rule chooses.",
+    summary="Runs an episode or season search and returns the one release the pick rule chooses.",
     responses={
         **_SEARCH_ERROR_RESPONSES,
         404: {"model": ErrorResponse, "description": "No release satisfies the pick rule."},
@@ -150,14 +154,19 @@ def api_pick_torrent(
     request: Request,
     query: str,
     season: int,
-    episode: int,
     resolution: str,
+    episode: int | None = None,
     min_seeders: int | None = Query(default=None, ge=MIN_SEEDERS_FLOOR),
     alt_query: str | None = None,
+    timeout_seconds: int | None = Query(
+        default=None, ge=_SEARCH_TIMEOUT_SPEC.min, le=_SEARCH_TIMEOUT_SPEC.max
+    ),
 ) -> TorrentResult:
-    """The same show search as ``/torrents`` for one episode, reduced to a single
-    release by ``pick_best``. ``resolution`` is one of the pick buckets;
-    ``min_seeders`` defaults to the configured minimum.
+    """The same show search as ``/torrents`` for one episode, or for one
+    season's pack when ``episode`` is unset, reduced to a single release by
+    ``pick_best``. ``resolution`` is one of the pick buckets; ``min_seeders``
+    defaults to the configured minimum; ``timeout_seconds`` makes this one
+    search wait longer than the configured timeout and skip the cache.
     """
     if resolution not in PICK_RESOLUTION_ORDER:
         raise AppException(
@@ -176,7 +185,11 @@ def api_pick_torrent(
             detail="Invalid season/episode.",
         ) from error
 
-    grouped: dict[str, list[TorrentResult]] = _search_grouped(query, alt_query, scope)
+    token = search_timeout_override.set(timeout_seconds)
+    try:
+        grouped: dict[str, list[TorrentResult]] = _search_grouped(query, alt_query, scope)
+    finally:
+        search_timeout_override.reset(token)
     picked: TorrentResult | None = pick_best(
         grouped,
         season=season,
@@ -188,7 +201,7 @@ def api_pick_torrent(
         raise AppException(
             status_code=fastapi_status.HTTP_404_NOT_FOUND,
             code=ErrorCode.NO_CANDIDATE,
-            detail="No release satisfies the pick rule for this episode.",
+            detail="No release satisfies the pick rule for this scope.",
         )
     return picked
 

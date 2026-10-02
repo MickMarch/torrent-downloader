@@ -138,7 +138,7 @@ class TestScopedSearchUnion:
             ],
         }
         run = mocker.patch.object(
-            qb, "execute_plugin_search", side_effect=lambda _c, p, _cat: by_pattern[p]
+            qb, "execute_plugin_search", side_effect=lambda _c, p, _cat, _t=None: by_pattern[p]
         )
         scope = TorrentSearchScope(media_type=MediaType.SHOW, season=6)
         results = qb.search_torrents(mocker.MagicMock(), "Show", scope)
@@ -160,7 +160,9 @@ class TestRunPatternSearches:
             qb.app_cache, "set", side_effect=lambda k, v, expire: cache.update({k: v})
         )
         run = mocker.patch.object(
-            qb, "execute_plugin_search", side_effect=lambda _c, p, _cat: [{"fileUrl": p.lower()}]
+            qb,
+            "execute_plugin_search",
+            side_effect=lambda _c, p, _cat, _t=None: [{"fileUrl": p.lower()}],
         )
         out = qb.run_pattern_searches(mocker.MagicMock(), ["A", "B", "C", "A"], "movies")
         assert list(out) == ["B", "A", "C"] or set(out) == {"A", "B", "C"}
@@ -179,7 +181,7 @@ class TestRunPatternSearches:
         mocker.patch.object(qb.config, "search_concurrency", 4)
         seen_threads: set[int] = set()
 
-        def slow(_c, p, _cat):
+        def slow(_c, p, _cat, _t=None):
             seen_threads.add(threading.get_ident())
             time.sleep(0.2)
             return [{"fileUrl": p}]

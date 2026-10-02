@@ -7,6 +7,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- `GET /search/torrents/pick` picks a single-season pack when `episode` is
+  omitted, and takes an optional `timeout_seconds` that makes that one
+  search wait longer and skip the result cache
+  (MickMarch/medialab#104).
+
 ## [1.19.0] - 2026-09-27
 
 ### Added
