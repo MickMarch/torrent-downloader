@@ -37,6 +37,7 @@ router = APIRouter(tags=[TAG_TRANSFERS])
 
 MAGNET_HASH_PATTERN = re.compile(r"xt=urn:btih:([a-fA-F0-9]{40}|[a-zA-Z2-7]{32})")
 MEDIA_TYPE_CACHE_PREFIX = "media_type:"
+PATH_SEPARATOR = "/"
 
 
 _QB_ERROR_RESPONSES = {
@@ -72,20 +73,22 @@ def _resolve_added_hash(client: qbittorrentapi.Client, before: set[str]) -> str 
     return None
 
 
-def _resolve_host_path(media_type: MediaType) -> str:
-    """Builds the host-side save path qBittorrent runs on. The container never
-    sees this path on disk - it exists only on the host filesystem."""
-    if config.media_host_path is None:
+def _resolve_save_path(media_type: MediaType) -> str:
+    """Builds the save path handed to qBittorrent: the staging subdir for the
+    media type under the shared media mount. qBittorrent, the orchestrator and
+    this service all see the mount at the same container path, so the value is
+    a plain POSIX path with no host translation."""
+    if config.media_mount_path is None:
         raise AppException(
             status_code=fastapi_status.HTTP_500_INTERNAL_SERVER_ERROR,
             code=ErrorCode.INTERNAL_ERROR,
-            detail="MEDIA_HOST_PATH is not configured.",
+            detail="MEDIA_MOUNT_PATH is not configured.",
         )
-    base = config.media_host_path.rstrip("\\/")
+    base = config.media_mount_path.rstrip(PATH_SEPARATOR)
     # Downloads land in the staging subdir, beside the Jellyfin library roots,
     # so Jellyfin never indexes a raw release; the orchestrator renames into
     # the library on completion.
-    return f"{base}\\{STAGING_SUBDIR}\\{MEDIA_TYPE_SUBDIRS[media_type]}"
+    return PATH_SEPARATOR.join((base, STAGING_SUBDIR, MEDIA_TYPE_SUBDIRS[media_type]))
 
 
 @router.post(
@@ -116,12 +119,12 @@ def api_trigger_download(request: Request, payload: DownloadRequest) -> Download
             detail=f"qBittorrent is not bound to an accepted VPN interface. Accepted: {accepted}.",
         )
 
-    host_path = _resolve_host_path(payload.media_type)
+    save_path = _resolve_save_path(payload.media_type)
 
     if payload.dry_run:
         return DownloadResponse(
             status="success",
-            message=f"Dry run bypassed download. Target: {host_path}",
+            message=f"Dry run bypassed download. Target: {save_path}",
         )
 
     kind = classify_source(payload.source_url)
@@ -146,7 +149,7 @@ def api_trigger_download(request: Request, payload: DownloadRequest) -> Download
     pre_add_hashes = set() if is_magnet else _snapshot_hashes(client)
 
     try:
-        client.torrents_add(urls=add_url, save_path=host_path)
+        client.torrents_add(urls=add_url, save_path=save_path)
     except Conflict409Error:
         return DownloadResponse(
             status="conflict",
@@ -162,7 +165,7 @@ def api_trigger_download(request: Request, payload: DownloadRequest) -> Download
             f"{MEDIA_TYPE_CACHE_PREFIX}{torrent_hash}",
             {
                 "media_type": payload.media_type,
-                "host_path": host_path,
+                "host_path": save_path,
                 "tmdb_id": payload.tmdb_id,
             },
         )
@@ -175,7 +178,7 @@ def api_trigger_download(request: Request, payload: DownloadRequest) -> Download
 
     return DownloadResponse(
         status="success",
-        message=f"Torrent added to queue. Save path: {host_path}",
+        message=f"Torrent added to queue. Save path: {save_path}",
         torrent_hash=torrent_hash,
     )
 
@@ -288,7 +291,7 @@ def api_remove_transfer(
     "/transfers/{torrent_hash}/info",
     response_model=TransferHashInfo,
     status_code=fastapi_status.HTTP_200_OK,
-    summary="Returns cached media_type and host path metadata for a completed download.",
+    summary="Returns cached media_type and save path metadata for a completed download.",
     responses={
         404: {"model": ErrorResponse, "description": "No cached metadata for this hash."},
         **_QB_ERROR_RESPONSES,
@@ -296,7 +299,7 @@ def api_remove_transfer(
 )
 @limiter.limit(RATE_LIMIT_DEFAULT)
 def api_get_transfer_info(request: Request, torrent_hash: str) -> TransferHashInfo:
-    """Look up the media_type and host path stored at download submission time."""
+    """Look up the media_type and save path stored at download submission time."""
     cached = app_cache.get(f"{MEDIA_TYPE_CACHE_PREFIX}{torrent_hash.lower()}")
     if cached is None:
         raise AppException(

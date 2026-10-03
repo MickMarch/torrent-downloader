@@ -6,7 +6,9 @@ from pydantic_settings import BaseSettings, SettingsConfigDict
 from torrent_downloader.services.language import LanguageFilter
 
 VPN_INTERFACE_SEPARATOR: str = ","
-DEFAULT_VPN_INTERFACES: str = "NordLynx"
+# The WireGuard tunnel interface inside a gluetun network namespace. A host
+# install overrides this with the adapter name qBittorrent is bound to.
+DEFAULT_VPN_INTERFACES: str = "tun0"
 
 SECONDS_PER_HOUR: int = 3600
 HOURS_PER_DAY: int = 24
@@ -49,7 +51,10 @@ class AppConfig(BaseSettings):
     api_host: str = Field(default="0.0.0.0")
     api_port: int = Field(default=8000)
 
-    media_host_path: str | None = Field(default=None)
+    # In-container path of the media root, the same bind mount qBittorrent and
+    # the orchestrator see. save_path values handed to qBittorrent are built
+    # under it with "/" separators.
+    media_mount_path: str | None = Field(default=None)
 
     # Comma-separated rather than list[str]: pydantic-settings JSON-parses complex
     # types in the env source before validators run, so a plain comma string on a

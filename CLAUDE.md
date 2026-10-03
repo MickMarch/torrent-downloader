@@ -20,11 +20,13 @@ uv run pytest tests/test_middleware.py::TestRequestIdHeader::test_response_inclu
 defaults. Every field is optional at import time (CI has no `.env`) and
 required at runtime. Two fields need context:
 
-- `MEDIA_HOST_PATH` is a **host** path even when this service runs in a
-  container: `save_path` is sent to host-installed qBittorrent's API, never
-  used locally. The app appends the staging subdir and the media-type subdir
-  (`_incoming\Movies` / `_incoming\Shows`); the orchestrator moves finished
-  downloads into the library roots.
+- `MEDIA_MOUNT_PATH` is the in-container path of the media root, the one bind
+  mount qBittorrent, the orchestrator and this service all see. The app
+  appends the staging subdir and the media-type subdir with `/`
+  (`/media/_incoming/Movies`, `/media/_incoming/Shows`) and hands that to
+  qBittorrent as `save_path`; the orchestrator moves finished downloads into
+  the library roots. The cached `host_path` field returned by
+  `/transfers/{hash}/info` keeps its contracts name but carries this path.
 - `VPN_INTERFACES` is a fail-closed allowlist. Empty rejects every download and
   never means "allow any". `is_vpn_bound(client, [])` denies rather than falling
   back to config (the fallback checks `is not None`, not truthiness).

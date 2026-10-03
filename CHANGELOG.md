@@ -7,6 +7,21 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed
+
+- `MEDIA_HOST_PATH` is now `MEDIA_MOUNT_PATH`: the in-container path of the
+  media root, shared with qBittorrent and the orchestrator through one bind
+  mount. Save paths are joined with `/`
+  (`MEDIA_MOUNT_PATH/_incoming/<Movies|Shows>`) instead of backslashes,
+  which Linux qBittorrent read as a single filename. The service refuses to
+  start while a `.env` still sets `MEDIA_HOST_PATH`; rename the key
+  (MickMarch/medialab#112).
+- `VPN_INTERFACES` defaults to `tun0`, the WireGuard interface inside a
+  gluetun network namespace, instead of `NordLynx`. Host installs set the
+  adapter name explicitly (MickMarch/medialab#112).
+- `.env.example` describes the shared-namespace layout: qBittorrent on
+  `127.0.0.1`, `API_PORT=8001` because gluetun's control server owns 8000.
+
 ## [1.20.0] - 2026-10-02
 
 ### Added
