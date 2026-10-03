@@ -3,20 +3,20 @@
 from torrent_downloader.core.config import AppConfig
 
 
-class TestMediaHostPath:
+class TestMediaMountPath:
     def test_defaults_to_none(self) -> None:
         cfg = AppConfig(_env_file=None)
-        assert cfg.media_host_path is None
+        assert cfg.media_mount_path is None
 
-    def test_accepts_media_host_path(self) -> None:
-        cfg = AppConfig(_env_file=None, media_host_path="F:\\Media")
-        assert cfg.media_host_path == "F:\\Media"
+    def test_accepts_media_mount_path(self) -> None:
+        cfg = AppConfig(_env_file=None, media_mount_path="/media")
+        assert cfg.media_mount_path == "/media"
 
 
 class TestVpnInterfaces:
-    def test_defaults_to_nordlynx(self) -> None:
+    def test_defaults_to_the_gluetun_tunnel_interface(self) -> None:
         cfg = AppConfig(_env_file=None)
-        assert cfg.vpn_interface_allowlist == ("NordLynx",)
+        assert cfg.vpn_interface_allowlist == ("tun0",)
 
     def test_parses_comma_separated(self) -> None:
         cfg = AppConfig(_env_file=None, vpn_interfaces="NordLynx,NordLayer-NordLynx")

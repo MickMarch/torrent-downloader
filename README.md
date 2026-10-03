@@ -9,17 +9,28 @@ usage. It is a downstream worker: only the medialab-orchestrator calls it.
 
 ### qBittorrent
 
-1. Install [qBittorrent](https://www.qbittorrent.org/download) and launch it.
+In the compose stack qBittorrent runs as a container inside the gluetun VPN
+namespace, and so does this service: qBittorrent is on `127.0.0.1:8080`, the
+tunnel interface is `tun0`, and the workspace provision script seeds the API
+key, interface binding and search plugins. Nothing to click. See the
+[workspace README](../README.md).
+
+For a host install instead:
+
+1. Install [qBittorrent](https://www.qbittorrent.org/download) (5.2 or newer)
+   and launch it.
 2. **Tools > Preferences > Web UI**: enable the Web UI, note host and port
-   (default `8080`), and set the credential the API will use.
+   (default `8080`), and generate an API key for `QB_API_KEY`.
 3. **Tools > Preferences > Advanced > Network interface**: bind qBittorrent to
-   your VPN interface, then list that interface name in `VPN_INTERFACES`. Any
+   your VPN adapter, then list that adapter name in `VPN_INTERFACES`. Any
    provider works; comma-separate several if you switch. Downloads are rejected
    unless the bound interface matches an entry; an empty list rejects all.
 4. Enable the search plugin system and install at least one plugin
    (**View > Search Engine > Search plugins**).
-5. For containerized deployment, bind the Web UI to `0.0.0.0` so the container
-   can reach it, and set `QB_HOST=host.docker.internal`.
+5. If this service runs in a container against host qBittorrent, bind the Web
+   UI to `0.0.0.0` and set `QB_HOST=host.docker.internal`. `MEDIA_MOUNT_PATH`
+   must then be a path qBittorrent can write, in qBittorrent's own view of the
+   filesystem.
 
 ### TMDB
 
@@ -38,9 +49,10 @@ uv run torrent-downloader       # production
 `.env.example` documents every variable. Interactive docs at `/docs`.
 
 The service runs as a container from the workspace `docker-compose.yml`; see
-the [workspace README](../README.md) for the compose flow. It mounts no media
-directories itself: `MEDIA_HOST_PATH` is the host path handed to
-host-installed qBittorrent.
+the [workspace README](../README.md) for the compose flow. `MEDIA_MOUNT_PATH`
+is the in-container path of the media root, the same bind mount qBittorrent
+and the orchestrator see, so the save paths this service hands to qBittorrent
+are plain POSIX paths under it.
 
 ## API
 
@@ -60,9 +72,9 @@ All paths under `/api/v1`. Every endpoint except `/health` requires
 | `GET` | `/search/torrents/pick?query=&season=&resolution=[&episode=&min_seeders=&alt_query=&timeout_seconds=]` | The show search reduced to the single `TorrentResult` the pick rule chooses. With `episode`: exact-episode releases only (no packs). Without it: exact single-season packs only (no episodes, no multi-season or complete-series packs). Then at least `min_seeders` seeders (default `MINIMUM_SEEDERS`), the requested resolution bucket or the next lower one (`4K` -> `1080p` -> `720p`, never `Other`), most seeders then largest file. `timeout_seconds` (bounded like the `search_timeout_seconds` setting) makes this one search wait longer and skip the result cache. `404 NO_CANDIDATE` when nothing qualifies; `422 INVALID_INPUT` for a resolution outside those buckets. |
 | `GET` | `/discover/{media_type}?[genre=&page=]` | One TMDB page as `DiscoverResponse` (`media_type` is `movie` or `show`): trending this week, or with `genre` the most popular titles in it with a minimum vote count. Cached for `DISCOVER_CACHE_SECONDS`. `503 TMDB_UNAVAILABLE` if TMDB is unconfigured or failing. |
 | `GET` | `/discover/{media_type}/genres` | TMDB genre list as `GenresResponse`, cached like discover. |
-| `POST` | `/download` | Body `{source_url, media_type, tmdb_id, dry_run?}`. `source_url` is a magnet, a `.torrent` URL, or an HTML details page. Resolves the host save path as `MEDIA_HOST_PATH\_incoming\<Movies|Shows>` (staging; the orchestrator places into the library), enforces VPN binding, returns `torrent_hash`. |
+| `POST` | `/download` | Body `{source_url, media_type, tmdb_id, dry_run?}`. `source_url` is a magnet, a `.torrent` URL, or an HTML details page. Resolves the save path as `MEDIA_MOUNT_PATH/_incoming/<Movies|Shows>` (staging; the orchestrator places into the library), enforces VPN binding, returns `torrent_hash`. |
 | `GET` | `/transfers` | Active transfers with state. |
-| `GET` | `/transfers/{torrent_hash}/info` | Cached `{media_type, host_path, tmdb_id}` for a hash (used by the orchestrator at completion). 404 `TRANSFER_NOT_FOUND` if unknown. |
+| `GET` | `/transfers/{torrent_hash}/info` | Cached `{media_type, host_path, tmdb_id}` for a hash (used by the orchestrator at completion); `host_path` is the contracts field name and carries the save path above. 404 `TRANSFER_NOT_FOUND` if unknown. |
 | `POST` | `/transfers/{torrent_hash}/resume` | Resume one torrent; no-op if already running. `404 TRANSFER_NOT_FOUND` if unknown. |
 | `DELETE` | `/transfers/{torrent_hash}[?delete_files=true]` | Remove one torrent from qBittorrent, keeping its files unless `delete_files=true`. `404` if unknown. |
 | `POST` | `/transfers/stop-seeding` | Pause every completed (seeding) torrent. Never touches in-progress downloads. |
