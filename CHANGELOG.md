@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.21.0] - 2026-10-03
+
 ### Changed
 
 - `MEDIA_HOST_PATH` is now `MEDIA_MOUNT_PATH`: the in-container path of the
