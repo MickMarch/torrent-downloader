@@ -28,6 +28,7 @@ from torrent_downloader.services.qbittorrent import (
     stop_seeding_transfers,
 )
 from torrent_downloader.services.source import (
+    ScrapeFailure,
     SourceKind,
     classify_source,
     scrape_magnet_from_page,
@@ -45,6 +46,33 @@ _QB_ERROR_RESPONSES = {
     429: {"model": ErrorResponse, "description": "Rate limit exceeded."},
     503: {"model": ErrorResponse, "description": "qBittorrent client unavailable."},
 }
+_DOWNLOAD_ERROR_RESPONSES = {
+    **_QB_ERROR_RESPONSES,
+    422: {"model": ErrorResponse, "description": "The details page carries no magnet."},
+    503: {
+        "model": ErrorResponse,
+        "description": "qBittorrent client unavailable, or the source page could not be reached.",
+    },
+}
+
+# (status, code, detail) for each way a details page can fail to yield a magnet.
+_SCRAPE_FAILURE_ERRORS: dict[ScrapeFailure, tuple[int, ErrorCode, str]] = {
+    ScrapeFailure.UNREACHABLE: (
+        fastapi_status.HTTP_503_SERVICE_UNAVAILABLE,
+        ErrorCode.SOURCE_UNREACHABLE,
+        "The source page could not be reached; the request can be retried.",
+    ),
+    ScrapeFailure.NO_MAGNET: (
+        fastapi_status.HTTP_422_UNPROCESSABLE_CONTENT,
+        ErrorCode.INVALID_INPUT,
+        "Could not extract a magnet from the details page.",
+    ),
+}
+
+
+def _scrape_failure_error(failure: ScrapeFailure) -> AppException:
+    status_code, code, detail = _SCRAPE_FAILURE_ERRORS[failure]
+    return AppException(status_code=status_code, code=code, detail=detail)
 
 
 def _extract_hash(magnet_uri: str) -> str | None:
@@ -96,7 +124,7 @@ def _resolve_save_path(media_type: MediaType) -> str:
     response_model=DownloadResponse,
     status_code=fastapi_status.HTTP_202_ACCEPTED,
     summary="Submits a selected torrent source (magnet or .torrent URL) to qBittorrent.",
-    responses=_QB_ERROR_RESPONSES,
+    responses=_DOWNLOAD_ERROR_RESPONSES,
 )
 @limiter.limit(RATE_LIMIT_DEFAULT)
 def api_trigger_download(request: Request, payload: DownloadRequest) -> DownloadResponse:
@@ -134,12 +162,8 @@ def api_trigger_download(request: Request, payload: DownloadRequest) -> Download
     add_url = payload.source_url
     if kind is SourceKind.HTML_PAGE:
         scraped = scrape_magnet_from_page(payload.source_url)
-        if scraped is None:
-            raise AppException(
-                status_code=fastapi_status.HTTP_422_UNPROCESSABLE_CONTENT,
-                code=ErrorCode.INVALID_INPUT,
-                detail="Could not extract a magnet from the details page.",
-            )
+        if isinstance(scraped, ScrapeFailure):
+            raise _scrape_failure_error(scraped)
         add_url = scraped
         kind = SourceKind.MAGNET
 

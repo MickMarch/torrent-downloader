@@ -3,6 +3,7 @@
 from pytest_mock import MockerFixture
 
 from torrent_downloader.services.source import (
+    ScrapeFailure,
     SourceKind,
     classify_source,
     scrape_magnet_from_page,
@@ -35,24 +36,27 @@ class TestScrapeMagnet:
 
         assert scrape_magnet_from_page(_PAGE) == _MAGNET
 
-    def test_returns_none_when_no_magnet(self, mocker: MockerFixture) -> None:
+    def test_no_magnet_on_a_fetched_page_is_no_magnet(self, mocker: MockerFixture) -> None:
+        # The page was reached; it carries no magnet. Retrying cannot help.
         mock_resp = mocker.MagicMock(status_code=200, text="<html>no magnet here</html>")
         mocker.patch("torrent_downloader.services.source.requests.get", return_value=mock_resp)
 
-        assert scrape_magnet_from_page(_PAGE) is None
+        assert scrape_magnet_from_page(_PAGE) is ScrapeFailure.NO_MAGNET
 
-    def test_returns_none_on_http_error(self, mocker: MockerFixture) -> None:
+    def test_non_200_is_unreachable(self, mocker: MockerFixture) -> None:
         mock_resp = mocker.MagicMock(status_code=404, text="")
         mocker.patch("torrent_downloader.services.source.requests.get", return_value=mock_resp)
 
-        assert scrape_magnet_from_page(_PAGE) is None
+        assert scrape_magnet_from_page(_PAGE) is ScrapeFailure.UNREACHABLE
 
-    def test_returns_none_on_request_exception(self, mocker: MockerFixture) -> None:
+    def test_request_exception_is_unreachable(self, mocker: MockerFixture) -> None:
+        # DNS failure, timeout, connection refused: the request was fine, the
+        # source was not reachable, and a retry may succeed.
         import requests
 
         mocker.patch(
             "torrent_downloader.services.source.requests.get",
-            side_effect=requests.RequestException("boom"),
+            side_effect=requests.ConnectionError("Failed to resolve 'www.limetorrents.lol'"),
         )
 
-        assert scrape_magnet_from_page(_PAGE) is None
+        assert scrape_magnet_from_page(_PAGE) is ScrapeFailure.UNREACHABLE

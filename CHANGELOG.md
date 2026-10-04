@@ -7,6 +7,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+
+- `POST /download` with an HTML details page that cannot be fetched (DNS
+  failure, timeout, non-200) now returns `503 SOURCE_UNREACHABLE` with a detail
+  saying the request can be retried. A page that was fetched but carries no
+  magnet stays `422 INVALID_INPUT`. Previously every scrape failure was 422.
+- TMDB search and detail lookups raise `503 TMDB_UNAVAILABLE` when TMDB cannot
+  be reached, instead of silently answering with no results. Every TMDB call
+  now carries a timeout.
+
 ## [1.21.0] - 2026-10-03
 
 ### Changed

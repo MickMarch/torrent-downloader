@@ -12,6 +12,7 @@ class TestErrorCode:
         assert ErrorCode.QB_UNAVAILABLE
         assert ErrorCode.VPN_NOT_BOUND
         assert ErrorCode.TRANSFER_NOT_FOUND
+        assert ErrorCode.SOURCE_UNREACHABLE
 
     def test_is_superset_of_common_error_code(self) -> None:
         # Every shared code must be present with the same value, sourced from

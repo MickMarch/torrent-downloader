@@ -68,6 +68,20 @@ _SEARCH_ERROR_RESPONSES = {
     422: {"model": ErrorResponse, "description": "Missing or invalid query parameter."},
     429: {"model": ErrorResponse, "description": "Rate limit exceeded."},
 }
+_TMDB_ERROR_RESPONSES = {
+    **_SEARCH_ERROR_RESPONSES,
+    503: {"model": ErrorResponse, "description": "TMDB unconfigured or unavailable."},
+}
+
+
+def _tmdb_unavailable(error: TmdbUnavailableError) -> AppException:
+    """The 503 every TMDB-backed route raises when TMDB cannot answer."""
+    app_logger.warning(f"TMDB request failed: {error}")
+    return AppException(
+        status_code=fastapi_status.HTTP_503_SERVICE_UNAVAILABLE,
+        code=ErrorCode.TMDB_UNAVAILABLE,
+        detail="TMDB is unavailable.",
+    )
 
 
 @router.get(
@@ -75,12 +89,15 @@ _SEARCH_ERROR_RESPONSES = {
     response_model=TmdbSearchResponse,
     status_code=fastapi_status.HTTP_200_OK,
     summary="Returns formatted TMDB metadata for dispatcher selection.",
-    responses=_SEARCH_ERROR_RESPONSES,
+    responses=_TMDB_ERROR_RESPONSES,
 )
 @limiter.limit(RATE_LIMIT_SEARCH)
 def api_search_tmdb(request: Request, query: str) -> TmdbSearchResponse:
     """Query TMDB for movies and TV shows matching the search string."""
-    raw_results: list[dict[str, Any]] = search_tmdb_multi(query)
+    try:
+        raw_results: list[dict[str, Any]] = search_tmdb_multi(query)
+    except TmdbUnavailableError as error:
+        raise _tmdb_unavailable(error) from error
     formatted_results: list[TmdbSearchResult] = [
         TmdbSearchResult(
             tmdb_id=item["id"],
@@ -281,12 +298,15 @@ def _movie_bare_title_pass(
     response_model=TmdbMediaDetailResponse,
     status_code=fastapi_status.HTTP_200_OK,
     summary="Returns full TMDB details for a movie by ID.",
-    responses=_SEARCH_ERROR_RESPONSES,
+    responses=_TMDB_ERROR_RESPONSES,
 )
 @limiter.limit(RATE_LIMIT_SEARCH)
 def api_get_movie_details(request: Request, movie_id: int) -> TmdbMediaDetailResponse:
     """Fetch detailed movie metadata from TMDB by movie ID."""
-    raw: dict[str, Any] = get_movie_details(movie_id)
+    try:
+        raw: dict[str, Any] = get_movie_details(movie_id)
+    except TmdbUnavailableError as error:
+        raise _tmdb_unavailable(error) from error
     if not raw:
         return TmdbMediaDetailResponse(status="error", message="Movie not found.", data=None)
     return TmdbMediaDetailResponse(status="success", message="", data=raw)
@@ -297,12 +317,15 @@ def api_get_movie_details(request: Request, movie_id: int) -> TmdbMediaDetailRes
     response_model=TmdbMediaDetailResponse,
     status_code=fastapi_status.HTTP_200_OK,
     summary="Returns full TMDB details for a TV series by ID.",
-    responses=_SEARCH_ERROR_RESPONSES,
+    responses=_TMDB_ERROR_RESPONSES,
 )
 @limiter.limit(RATE_LIMIT_SEARCH)
 def api_get_tv_details(request: Request, series_id: int) -> TmdbMediaDetailResponse:
     """Fetch detailed TV series metadata from TMDB by series ID."""
-    raw: dict[str, Any] = get_tv_details(series_id)
+    try:
+        raw: dict[str, Any] = get_tv_details(series_id)
+    except TmdbUnavailableError as error:
+        raise _tmdb_unavailable(error) from error
     if not raw:
         return TmdbMediaDetailResponse(status="error", message="TV series not found.", data=None)
     return TmdbMediaDetailResponse(status="success", message="", data=raw)
@@ -313,10 +336,7 @@ def api_get_tv_details(request: Request, series_id: int) -> TmdbMediaDetailRespo
     response_model=SeriesEpisodesResponse,
     status_code=fastapi_status.HTTP_200_OK,
     summary="Returns every season and episode of a TV series by ID.",
-    responses={
-        **_SEARCH_ERROR_RESPONSES,
-        503: {"model": ErrorResponse, "description": "TMDB unconfigured or unavailable."},
-    },
+    responses=_TMDB_ERROR_RESPONSES,
 )
 @limiter.limit(RATE_LIMIT_SEARCH)
 def api_get_series_episodes(request: Request, series_id: int) -> SeriesEpisodesResponse:
@@ -324,12 +344,7 @@ def api_get_series_episodes(request: Request, series_id: int) -> SeriesEpisodesR
     try:
         return get_series_episodes(series_id)
     except TmdbUnavailableError as error:
-        app_logger.warning(f"Series episodes request failed: {error}")
-        raise AppException(
-            status_code=fastapi_status.HTTP_503_SERVICE_UNAVAILABLE,
-            code=ErrorCode.TMDB_UNAVAILABLE,
-            detail="TMDB is unavailable.",
-        ) from error
+        raise _tmdb_unavailable(error) from error
 
 
 @router.get(
@@ -337,10 +352,7 @@ def api_get_series_episodes(request: Request, series_id: int) -> SeriesEpisodesR
     response_model=VideosResponse,
     status_code=fastapi_status.HTTP_200_OK,
     summary="Returns the YouTube trailers and teasers of a title or a season.",
-    responses={
-        **_SEARCH_ERROR_RESPONSES,
-        503: {"model": ErrorResponse, "description": "TMDB unconfigured or unavailable."},
-    },
+    responses=_TMDB_ERROR_RESPONSES,
 )
 @limiter.limit(RATE_LIMIT_SEARCH)
 def api_get_videos(
@@ -356,9 +368,4 @@ def api_get_videos(
     try:
         return get_videos(media_type, tmdb_id, season=season)
     except TmdbUnavailableError as error:
-        app_logger.warning(f"Videos request failed: {error}")
-        raise AppException(
-            status_code=fastapi_status.HTTP_503_SERVICE_UNAVAILABLE,
-            code=ErrorCode.TMDB_UNAVAILABLE,
-            detail="TMDB is unavailable.",
-        ) from error
+        raise _tmdb_unavailable(error) from error

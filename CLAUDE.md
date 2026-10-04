@@ -42,7 +42,8 @@ resolution; shows accept `season`/`episode`) -> `POST /download` with a
 `source_url`. `services/source.py` classifies the source: magnet (hash from
 the URI), `.torrent` file URL (hash read back by snapshot diff of
 `torrents_info()` before/after add), or HTML details page (magnet scraped
-from the page; 422 if none). VPN binding is enforced before every add. The
+from the page; `503 SOURCE_UNREACHABLE` when the page cannot be fetched, `422`
+when it has no magnet). VPN binding is enforced before every add. The
 resolved info-hash is returned as `torrent_hash` and `{media_type, host_path,
 tmdb_id}` is cached against it for the orchestrator's
 `GET /transfers/{hash}/info` at completion time.

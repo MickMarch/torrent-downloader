@@ -26,6 +26,20 @@ TMDB_MOVIE_URL: str = f"{TMDB_BASE_URL}/movie"
 TMDB_TV_URL: str = f"{TMDB_BASE_URL}/tv"
 HTTP_STATUS_OK: int = 200
 VALID_MEDIA_TYPES: set[str] = {"movie", "tv"}
+TMDB_REQUEST_TIMEOUT_SECONDS: int = 10
+
+
+class TmdbUnavailableError(Exception):
+    """TMDB is unconfigured, unreachable, or answered with an error."""
+
+
+def _get_or_unavailable(url: str, params: dict[str, Any]) -> requests.Response:
+    """One TMDB GET. A transport failure (DNS, timeout, refused) is a typed
+    error, never silently an empty result."""
+    try:
+        return requests.get(url, params=params, timeout=TMDB_REQUEST_TIMEOUT_SECONDS)
+    except requests.RequestException as error:
+        raise TmdbUnavailableError(f"TMDB request failed: {url}") from error
 
 
 @app_cache.memoize(expire=config.cache_expiration_seconds)
@@ -40,7 +54,7 @@ def search_tmdb_multi(query: str) -> list[dict[str, Any]]:
         "language": config.target_language,
     }
 
-    response: requests.Response = requests.get(TMDB_SEARCH_URL, params=params)
+    response: requests.Response = _get_or_unavailable(TMDB_SEARCH_URL, params)
 
     if response.status_code == HTTP_STATUS_OK:
         data: dict[str, Any] = response.json()
@@ -79,7 +93,7 @@ def get_movie_details(movie_id: int) -> dict[str, Any]:
         "language": config.target_language,
     }
 
-    response: requests.Response = requests.get(f"{TMDB_MOVIE_URL}/{movie_id}", params=params)
+    response: requests.Response = _get_or_unavailable(f"{TMDB_MOVIE_URL}/{movie_id}", params)
 
     if response.status_code == HTTP_STATUS_OK:
         return response.json()
@@ -98,7 +112,7 @@ def get_tv_details(series_id: int) -> dict[str, Any]:
         "language": config.target_language,
     }
 
-    response: requests.Response = requests.get(f"{TMDB_TV_URL}/{series_id}", params=params)
+    response: requests.Response = _get_or_unavailable(f"{TMDB_TV_URL}/{series_id}", params)
 
     if response.status_code == HTTP_STATUS_OK:
         return response.json()
@@ -115,7 +129,6 @@ TRENDING_WINDOW: str = "week"
 # TMDB rejects page numbers above this, whatever total_pages reports.
 TMDB_MAX_PAGE: int = 500
 TMDB_FIRST_PAGE: int = 1
-TMDB_REQUEST_TIMEOUT_SECONDS: int = 10
 YEAR_LENGTH: int = 4
 
 ENDPOINT_TRENDING: str = "trending"
@@ -137,10 +150,6 @@ DATE_FIELD_BY_MEDIA_TYPE: dict[MediaType, str] = {
 }
 
 
-class TmdbUnavailableError(Exception):
-    """TMDB is unconfigured, unreachable, or answered with an error."""
-
-
 def _tmdb_get(path: str, params: dict[str, Any]) -> dict[str, Any]:
     if not config.tmdb_api_key:
         raise TmdbUnavailableError("TMDB API key is not configured.")
@@ -149,12 +158,7 @@ def _tmdb_get(path: str, params: dict[str, Any]) -> dict[str, Any]:
         "language": config.target_language,
         **params,
     }
-    try:
-        response: requests.Response = requests.get(
-            f"{TMDB_BASE_URL}/{path}", params=query, timeout=TMDB_REQUEST_TIMEOUT_SECONDS
-        )
-    except requests.RequestException as error:
-        raise TmdbUnavailableError(f"TMDB request failed: {path}") from error
+    response: requests.Response = _get_or_unavailable(f"{TMDB_BASE_URL}/{path}", query)
     if response.status_code != HTTP_STATUS_OK:
         raise TmdbUnavailableError(f"TMDB returned {response.status_code} for {path}")
     return response.json()

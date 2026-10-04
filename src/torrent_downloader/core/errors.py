@@ -21,6 +21,9 @@ class ErrorCode(str, Enum):
     TRANSFER_NOT_FOUND = "TRANSFER_NOT_FOUND"
     TMDB_UNAVAILABLE = "TMDB_UNAVAILABLE"
     NO_CANDIDATE = "NO_CANDIDATE"
+    # The source page a download points at could not be fetched (DNS, timeout,
+    # non-200). The request was valid and a retry may succeed.
+    SOURCE_UNREACHABLE = "SOURCE_UNREACHABLE"
 
 
 class AppException(Exception):

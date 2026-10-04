@@ -28,6 +28,18 @@ _HTTP_OK = 200
 _USER_AGENT = "Mozilla/5.0 (compatible; medialab-downloader)"
 
 
+class ScrapeFailure(Enum):
+    """Why no magnet came back from a details page.
+
+    ``UNREACHABLE`` is a transport failure or a non-200 answer: the page was
+    never read, so the request was fine and a retry may succeed. ``NO_MAGNET``
+    is a page that was read and carries no magnet; retrying cannot help.
+    """
+
+    UNREACHABLE = "unreachable"
+    NO_MAGNET = "no_magnet"
+
+
 class SourceKind(Enum):
     """The shape of a torrent source URL."""
 
@@ -48,12 +60,12 @@ def classify_source(source_url: str) -> SourceKind:
     return SourceKind.UNKNOWN
 
 
-def scrape_magnet_from_page(page_url: str) -> str | None:
+def scrape_magnet_from_page(page_url: str) -> str | ScrapeFailure:
     """Fetch an HTML details page and return the first magnet URI on it.
 
-    Returns ``None`` on any failure (network error, non-200, or no magnet
-    present) so the caller can degrade to a clear error rather than crashing.
-    The request runs inside the container, which is bound to the VPN interface.
+    A failure comes back as a ``ScrapeFailure`` naming its kind, so the caller
+    can tell a retryable fetch problem from a page that has no magnet. The
+    request runs inside the container, which is bound to the VPN interface.
     """
     try:
         response = requests.get(
@@ -63,14 +75,14 @@ def scrape_magnet_from_page(page_url: str) -> str | None:
         )
     except requests.RequestException as error:
         app_logger.warning("Failed to fetch details page %s: %s", page_url, error)
-        return None
+        return ScrapeFailure.UNREACHABLE
 
     if response.status_code != _HTTP_OK:
         app_logger.warning("Details page %s returned status %s", page_url, response.status_code)
-        return None
+        return ScrapeFailure.UNREACHABLE
 
     match = _MAGNET_PATTERN.search(response.text)
     if match is None:
         app_logger.warning("No magnet found on details page %s", page_url)
-        return None
+        return ScrapeFailure.NO_MAGNET
     return match.group(0)
