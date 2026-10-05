@@ -7,6 +7,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- `GET /search/torrents/progress`: where the search for the same parameters
+  stands (patterns done out of total, results so far, elapsed and timeout),
+  read from an in-process registry the plugin search poll feeds and from the
+  pattern cache. Never calls qBittorrent.
+
+### Changed
+
+- medialab-contracts pinned to the tag that carries `TorrentSearchProgress`.
+
 ## [1.21.1] - 2026-10-04
 
 ### Fixed

@@ -56,7 +56,10 @@ category from `media_type`) -> `execute_plugin_search` -> `filter_and_sort_resul
 (season/episode scopes only: PTN parse, keep matches, keep range/complete packs
 as ranked-below fallbacks) -> `group_by_resolution`
 (4K/1080p/720p/Other). Search uses qBittorrent's built-in plugin system,
-async-polled with a timeout; hanging plugins are stopped explicitly.
+async-polled with a timeout; hanging plugins are stopped explicitly. Each poll
+reports the running result count to `services/search_progress.py`, an
+in-process registry keyed like the pattern cache, which
+`GET /search/torrents/progress` aggregates for the same request parameters.
 
 **Cross-cutting:** `X-API-Key` via `Security(APIKeyHeader)` in `core/auth.py`,
 applied on `include_router` (system routes per-route so `/health` stays
