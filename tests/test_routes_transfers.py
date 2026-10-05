@@ -5,6 +5,7 @@ from fastapi.testclient import TestClient
 from pytest_mock import MockerFixture
 
 from torrent_downloader.core.errors import ErrorCode
+from torrent_downloader.services.source import ScrapeFailure
 
 MOVIE_MAGNET = "magnet:?xt=urn:btih:1234567890abcdef1234567890abcdef12345678&dn=Movie"
 SHOW_MAGNET = "magnet:?xt=urn:btih:ABCDEF1234567890ABCDEF1234567890ABCDEF12&dn=Show"
@@ -276,7 +277,7 @@ class TestDownloadHtmlPageUrl:
         assert app_cache.get(f"media_type:{SCRAPED_HASH}") is not None
         mock_client.torrents_info.assert_not_called()
 
-    def test_unscrapeable_page_returns_error(
+    def test_page_without_magnet_is_422_invalid_input(
         self, client: TestClient, mocker: MockerFixture
     ) -> None:
         mock_client = mocker.MagicMock()
@@ -285,12 +286,37 @@ class TestDownloadHtmlPageUrl:
         )
         mocker.patch("torrent_downloader.routers.transfers.is_vpn_bound", return_value=True)
         mocker.patch(
-            "torrent_downloader.routers.transfers.scrape_magnet_from_page", return_value=None
+            "torrent_downloader.routers.transfers.scrape_magnet_from_page",
+            return_value=ScrapeFailure.NO_MAGNET,
         )
 
         response = client.post("/api/v1/download", json=_download_body(DETAILS_PAGE, "movie"))
 
         assert response.status_code == 422
+        assert response.json()["code"] == ErrorCode.INVALID_INPUT.value
+        mock_client.torrents_add.assert_not_called()
+
+    def test_unreachable_page_is_503_source_unreachable(
+        self, client: TestClient, mocker: MockerFixture
+    ) -> None:
+        # The request was valid; the source page could not be fetched. The
+        # caller must learn that a retry is worth it.
+        mock_client = mocker.MagicMock()
+        mocker.patch(
+            "torrent_downloader.routers.transfers.get_torrent_client", return_value=mock_client
+        )
+        mocker.patch("torrent_downloader.routers.transfers.is_vpn_bound", return_value=True)
+        mocker.patch(
+            "torrent_downloader.routers.transfers.scrape_magnet_from_page",
+            return_value=ScrapeFailure.UNREACHABLE,
+        )
+
+        response = client.post("/api/v1/download", json=_download_body(DETAILS_PAGE, "movie"))
+
+        assert response.status_code == 503
+        body = response.json()
+        assert body["code"] == ErrorCode.SOURCE_UNREACHABLE.value
+        assert "retr" in body["detail"].lower()
         mock_client.torrents_add.assert_not_called()
 
 
