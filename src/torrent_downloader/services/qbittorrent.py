@@ -9,7 +9,7 @@ from typing import Any
 
 import PTN
 import qbittorrentapi
-from medialab_contracts import MediaType, TorrentSearchScope
+from medialab_contracts import MediaType, TorrentSearchProgress, TorrentSearchScope
 from qbittorrentapi.exceptions import APIConnectionError
 
 from torrent_downloader.core.cache import app_cache
@@ -17,6 +17,7 @@ from torrent_downloader.core.config import config
 from torrent_downloader.core.logger import app_logger
 from torrent_downloader.schemas.torrents import TorrentResult
 from torrent_downloader.schemas.transfers import TransferInfo
+from torrent_downloader.services.search_progress import search_progress
 
 search_timeout_override: ContextVar[int | None] = ContextVar(
     "search_timeout_override", default=None
@@ -38,6 +39,8 @@ VPN_INTERFACE_PREFERENCE_KEY: str = "current_interface_name"
 NO_INTERFACES_CONFIGURED: str = "<none configured>"
 
 SEARCH_COMPLETION_STATUS: str = "Stopped"
+# qBittorrent's search status carries the running result count under this key.
+SEARCH_STATUS_TOTAL_KEY: str = "total"
 POLL_INTERVAL_SECONDS: float = 1.0
 EMPTY_SEEDER_COUNT: int = 0
 DEFAULT_SEARCH_ID: int = 0
@@ -329,6 +332,16 @@ def execute_plugin_search(
     still-running plugins are forcibly stopped before results are fetched.
     """
     timeout: int = config.search_timeout_seconds if timeout_seconds is None else timeout_seconds
+    search_progress.start(query, category)
+    try:
+        return _run_plugin_search(client, query, category, timeout)
+    finally:
+        search_progress.finish(query, category)
+
+
+def _run_plugin_search(
+    client: qbittorrentapi.Client, query: str, category: str, timeout: int
+) -> list[dict[str, Any]]:
     search_job: dict[str, Any] = client.search_start(
         pattern=query, plugins="all", category=category
     )
@@ -343,14 +356,20 @@ def execute_plugin_search(
             client.search_stop(search_id=search_id)
             break
 
-        status: dict[str, Any] = client.search_status(search_id=search_id)
-        if status and status[0].get("status") == SEARCH_COMPLETION_STATUS:
-            break
+        status: list[dict[str, Any]] = client.search_status(search_id=search_id)
+        if status:
+            search_progress.update(
+                query, category, results=int(status[0].get(SEARCH_STATUS_TOTAL_KEY, 0))
+            )
+            if status[0].get("status") == SEARCH_COMPLETION_STATUS:
+                break
 
         time.sleep(POLL_INTERVAL_SECONDS)
 
     results: Any = client.search_results(search_id=search_id, limit=0)
-    return results.get("results", [])
+    found: list[dict[str, Any]] = results.get("results", [])
+    search_progress.update(query, category, results=len(found))
+    return found
 
 
 def _pattern_cache_key(pattern: str, category: str) -> str:
@@ -398,6 +417,41 @@ def run_pattern_searches(
         for pattern, found in zip(pending, pool.map(run, pending), strict=True):
             results[pattern] = found
     return results
+
+
+def search_queries(query: str, alt_query: str | None) -> list[str]:
+    """The primary query and, when it differs, the alternate spelling."""
+    queries: list[str] = [query]
+    if alt_query and alt_query.strip().casefold() != query.strip().casefold():
+        queries.append(alt_query.strip())
+    return queries
+
+
+def request_patterns(queries: Sequence[str], scope: TorrentSearchScope) -> list[str]:
+    """Every plugin pattern one search request runs: each query's scope
+    patterns and, for a movie with a trailing year, the bare title's too.
+    The prefetch runs exactly these; the progress endpoint reports on them."""
+    patterns: list[str] = []
+    for q in queries:
+        patterns.extend(build_search_patterns(q, scope))
+        if scope.media_type is MediaType.MOVIE and (split := split_trailing_year(q)):
+            patterns.extend(build_search_patterns(split[0], scope))
+    return list(dict.fromkeys(patterns))
+
+
+def search_progress_for(
+    query: str, alt_query: str | None, scope: TorrentSearchScope
+) -> TorrentSearchProgress:
+    """Where the search for these parameters stands, from the registry and
+    the pattern cache; never touches qBittorrent."""
+    category: str = SEARCH_CATEGORY_BY_MEDIA_TYPE[scope.media_type]
+    patterns = request_patterns(search_queries(query, alt_query), scope)
+    return search_progress.aggregate(
+        patterns,
+        category,
+        timeout_seconds=config.search_timeout_seconds,
+        cached_results=lambda p: app_cache.get(_pattern_cache_key(p, category)),
+    )
 
 
 def search_torrents(

@@ -8,6 +8,7 @@ from fastapi import status as fastapi_status
 from medialab_contracts import (
     MediaType,
     SeriesEpisodesResponse,
+    TorrentSearchProgress,
     TorrentSearchScope,
     VideosResponse,
 )
@@ -16,7 +17,7 @@ from pydantic import ValidationError
 from torrent_downloader.core.config import config
 from torrent_downloader.core.constants import TAG_SEARCH
 from torrent_downloader.core.errors import AppException, ErrorCode
-from torrent_downloader.core.limiter import RATE_LIMIT_SEARCH, limiter
+from torrent_downloader.core.limiter import RATE_LIMIT_DEFAULT, RATE_LIMIT_SEARCH, limiter
 from torrent_downloader.core.logger import app_logger
 from torrent_downloader.core.settings import SEARCH_TIMEOUT_SETTING_KEY, runtime_settings
 from torrent_downloader.schemas.errors import ErrorResponse
@@ -30,14 +31,16 @@ from torrent_downloader.services.language import annotate_and_filter
 from torrent_downloader.services.qbittorrent import (
     PICK_RESOLUTION_ORDER,
     SEARCH_CATEGORY_BY_MEDIA_TYPE,
-    build_search_patterns,
     filter_and_sort_results,
     filter_by_scope,
     filter_by_year,
     get_torrent_client,
     group_by_resolution,
     pick_best,
+    request_patterns,
     run_pattern_searches,
+    search_progress_for,
+    search_queries,
     search_timeout_override,
     search_torrents,
     split_trailing_year,
@@ -156,6 +159,39 @@ def api_search_torrents(
 
 
 @router.get(
+    "/torrents/progress",
+    response_model=TorrentSearchProgress,
+    status_code=fastapi_status.HTTP_200_OK,
+    summary="Where the torrent search for these parameters stands.",
+    responses=_SEARCH_ERROR_RESPONSES,
+)
+@limiter.limit(RATE_LIMIT_DEFAULT)
+def api_search_progress(
+    request: Request,
+    query: str,
+    media_type: MediaType,
+    season: int | None = None,
+    episode: int | None = None,
+    alt_query: str | None = None,
+) -> TorrentSearchProgress:
+    """Patterns done out of total, results so far, elapsed and timeout for
+    the search ``/torrents`` would run with the same parameters. Read from
+    the in-process registry and the pattern cache; qBittorrent is not called,
+    so it is cheap to poll."""
+    try:
+        scope: TorrentSearchScope = TorrentSearchScope(
+            media_type=media_type, season=season, episode=episode
+        )
+    except ValidationError as error:
+        raise AppException(
+            status_code=fastapi_status.HTTP_422_UNPROCESSABLE_CONTENT,
+            code=ErrorCode.INVALID_INPUT,
+            detail="Invalid season/episode combination for the requested media type.",
+        ) from error
+    return search_progress_for(query, alt_query, scope)
+
+
+@router.get(
     "/torrents/pick",
     response_model=TorrentResult,
     status_code=fastapi_status.HTTP_200_OK,
@@ -237,9 +273,7 @@ def _search_grouped(
             detail="qBittorrent client unavailable.",
         )
 
-    queries: list[str] = [query]
-    if alt_query and alt_query.strip().casefold() != query.strip().casefold():
-        queries.append(alt_query.strip())
+    queries: list[str] = search_queries(query, alt_query)
     _prefetch_patterns(client, queries, scope)
     batches: list[list[dict[str, Any]]] = []
     for q in queries:
@@ -258,11 +292,7 @@ def _prefetch_patterns(
 ) -> None:
     """Runs every pattern the pipeline will ask for in one concurrent batch, so
     the sequential passes below all hit the cache."""
-    patterns: list[str] = []
-    for q in queries:
-        patterns.extend(build_search_patterns(q, scope))
-        if scope.media_type is MediaType.MOVIE and (split := split_trailing_year(q)):
-            patterns.extend(build_search_patterns(split[0], scope))
+    patterns: list[str] = request_patterns(queries, scope)
     run_pattern_searches(client, patterns, SEARCH_CATEGORY_BY_MEDIA_TYPE[scope.media_type])
 
 
