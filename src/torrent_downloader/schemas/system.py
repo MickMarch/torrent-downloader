@@ -1,5 +1,6 @@
 """Response schemas for system endpoints."""
 
+from medialab_contracts import CredentialState
 from pydantic import BaseModel
 
 
@@ -9,6 +10,8 @@ class HealthResponse(BaseModel):
     status: str
     uptime_seconds: float
     vpn_interface_bound: bool
+    credentials: dict[str, CredentialState] = {}
+    """Per-credential health for the keys this service owns."""
 
 
 class CacheClearResponse(BaseModel):

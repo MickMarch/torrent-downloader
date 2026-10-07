@@ -75,11 +75,12 @@ of the 403 body and `/health` (public; on VPN drop it is often the LAN adapter).
 
 ```
 src/torrent_downloader/
-├── core/        config, auth, limiter, middleware, cache, logger, errors, constants,
+├── core/        config, auth, limiter, middleware, cache, logger, errors, constants, credentials (per-key health tracker),
 │                settings (declared runtime tunables, JSON override store, applied onto config)
 ├── services/    qbittorrent (client, search, filter/sort/group, transfers, VPN check),
 │                language (audio language parse + AUDIO_LANGUAGE_FILTER policy),
-│                tmdb, source (source-URL classification + magnet scraping), storage
+│                tmdb, source (source-URL classification + magnet scraping), storage,
+│                credential_probe (slow probe loop started by the lifespan)
 ├── schemas/     request/response models; errors re-exports contracts ErrorResponse
 ├── routers/     system, settings, search, discover, transfers (registered in main.py under /api/v1)
 └── main.py      app, middleware, exception handlers, custom OpenAPI (/health unauthenticated)

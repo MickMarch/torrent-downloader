@@ -62,7 +62,7 @@ All paths under `/api/v1`. Every endpoint except `/health` requires
 
 | Method | Endpoint | Description |
 |---|---|---|
-| `GET` | `/health` | Public. Uptime and VPN-binding status (bool only). |
+| `GET` | `/health` | Public. Uptime, VPN-binding status (bool only) and `credentials`: per-key health (`ok`, `invalid`, `unreachable`, `unknown`) for the TMDB key and the qBittorrent WebUI key. A refusal on any live call marks a key `invalid` at once; a probe every `CREDENTIAL_CHECK_INTERVAL_SECONDS` covers keys that expire while idle. |
 | `GET` | `/search/tmdb?query=` | TMDB multi-search (movies + shows). |
 | `GET` | `/search/tmdb/movie/{tmdb_id}` | TMDB movie detail. |
 | `GET` | `/search/tmdb/show/{tmdb_id}` | TMDB show detail, including the season list. |

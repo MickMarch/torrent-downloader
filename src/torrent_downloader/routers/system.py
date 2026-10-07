@@ -9,6 +9,7 @@ from fastapi import status as fastapi_status
 from torrent_downloader.core.auth import verify_api_key
 from torrent_downloader.core.cache import app_cache
 from torrent_downloader.core.constants import API_START_TIME, TAG_SYSTEM
+from torrent_downloader.core.credentials import credentials
 from torrent_downloader.core.errors import AppException, ErrorCode
 from torrent_downloader.core.limiter import RATE_LIMIT_DEFAULT, limiter
 from torrent_downloader.core.logger import app_logger
@@ -40,6 +41,7 @@ def api_health_check() -> HealthResponse:
         status="online",
         uptime_seconds=round(uptime_seconds, 2),
         vpn_interface_bound=vpn_status,
+        credentials=credentials.snapshot(),
     )
 
 

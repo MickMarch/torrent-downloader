@@ -9,11 +9,17 @@ from typing import Any
 
 import PTN
 import qbittorrentapi
-from medialab_contracts import MediaType, TorrentSearchProgress, TorrentSearchScope
-from qbittorrentapi.exceptions import APIConnectionError
+from medialab_contracts import (
+    CREDENTIAL_QB_API_KEY,
+    MediaType,
+    TorrentSearchProgress,
+    TorrentSearchScope,
+)
+from qbittorrentapi.exceptions import APIConnectionError, Forbidden403Error
 
 from torrent_downloader.core.cache import app_cache
 from torrent_downloader.core.config import config
+from torrent_downloader.core.credentials import credentials
 from torrent_downloader.core.logger import app_logger
 from torrent_downloader.schemas.torrents import TorrentResult
 from torrent_downloader.schemas.transfers import TransferInfo
@@ -91,10 +97,18 @@ def get_torrent_client() -> qbittorrentapi.Client | None:
 
     try:
         client.app_web_api_version()
-        return client
+    except Forbidden403Error as error:
+        credentials.mark_invalid(
+            CREDENTIAL_QB_API_KEY, f"qBittorrent refused the WebUI key: {error}"
+        )
+        app_logger.error(f"qBittorrent refused the WebUI API key: {error}")
+        return None
     except APIConnectionError as error:
+        credentials.mark_unreachable(CREDENTIAL_QB_API_KEY, str(error))
         app_logger.error(f"Failed to connect to qBittorrent Web UI: {error}")
         return None
+    credentials.mark_ok(CREDENTIAL_QB_API_KEY)
+    return client
 
 
 def get_active_transfers(client: qbittorrentapi.Client) -> list[TransferInfo]:
