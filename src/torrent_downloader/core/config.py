@@ -17,6 +17,9 @@ SECONDS_PER_DAY: int = SECONDS_PER_HOUR * HOURS_PER_DAY
 DISCOVER_CACHE_SECONDS_DEFAULT: int = SECONDS_PER_DAY
 DISCOVER_CACHE_SECONDS_MIN: int = SECONDS_PER_HOUR
 DISCOVER_CACHE_SECONDS_MAX: int = SECONDS_PER_DAY * DAYS_PER_WEEK
+CREDENTIAL_CHECK_INTERVAL_DEFAULT: int = SECONDS_PER_HOUR * 6
+CREDENTIAL_CHECK_INTERVAL_MIN: int = 300
+CREDENTIAL_CHECK_INTERVAL_MAX: int = SECONDS_PER_DAY * DAYS_PER_WEEK
 
 
 class AppConfig(BaseSettings):
@@ -46,6 +49,8 @@ class AppConfig(BaseSettings):
     discover_cache_seconds: int = Field(default=DISCOVER_CACHE_SECONDS_DEFAULT)
     # Runtime setting overrides (see core/settings.py); lives on the cache volume.
     settings_path: str = Field(default=".cache/settings.json")
+    # How often the slow credential probe exercises the TMDB and qBittorrent keys.
+    credential_check_interval_seconds: int = Field(default=CREDENTIAL_CHECK_INTERVAL_DEFAULT)
 
     api_key: str | None = Field(default=None)
     api_host: str = Field(default="0.0.0.0")

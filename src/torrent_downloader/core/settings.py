@@ -20,6 +20,8 @@ from medialab_contracts import (
 )
 
 from torrent_downloader.core.config import (
+    CREDENTIAL_CHECK_INTERVAL_MAX,
+    CREDENTIAL_CHECK_INTERVAL_MIN,
     DISCOVER_CACHE_SECONDS_MAX,
     DISCOVER_CACHE_SECONDS_MIN,
     AppConfig,
@@ -30,6 +32,7 @@ from torrent_downloader.services.language import LanguageFilter
 
 _APPLIES_NEXT_SEARCH = "next search"
 _APPLIES_NEXT_CACHE_WRITE = "next cache write"
+_APPLIES_NEXT_PROBE = "next credential probe"
 
 SEARCH_TIMEOUT_SETTING_KEY = "search_timeout_seconds"
 
@@ -89,6 +92,14 @@ SETTINGS: tuple[SettingSpec, ...] = (
         max=DISCOVER_CACHE_SECONDS_MAX,
         description="How long trending, by-genre and genre lists from TMDB stay cached.",
         applies=_APPLIES_NEXT_CACHE_WRITE,
+    ),
+    SettingSpec(
+        key="credential_check_interval_seconds",
+        type=SettingType.INT,
+        min=CREDENTIAL_CHECK_INTERVAL_MIN,
+        max=CREDENTIAL_CHECK_INTERVAL_MAX,
+        description="Seconds between checks that the TMDB and qBittorrent keys still work.",
+        applies=_APPLIES_NEXT_PROBE,
     ),
 )
 

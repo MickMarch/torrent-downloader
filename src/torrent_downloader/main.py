@@ -1,6 +1,9 @@
 """Application entry point: FastAPI app factory and uvicorn launch helpers."""
 
+import asyncio
 import importlib.metadata
+from collections.abc import AsyncIterator
+from contextlib import asynccontextmanager
 
 import uvicorn
 from fastapi import Depends, FastAPI, Request
@@ -17,8 +20,23 @@ from torrent_downloader.core.limiter import limiter
 from torrent_downloader.core.logger import app_logger
 from torrent_downloader.core.middleware import RequestLoggingMiddleware
 from torrent_downloader.routers import discover, search, settings, system, transfers
+from torrent_downloader.services.credential_probe import run_probe_loop
+
+
+@asynccontextmanager
+async def lifespan(_app: FastAPI) -> AsyncIterator[None]:
+    """Run the slow credential probe for the life of the process."""
+    stop = asyncio.Event()
+    task = asyncio.create_task(run_probe_loop(stop))
+    try:
+        yield
+    finally:
+        stop.set()
+        task.cancel()
+
 
 app: FastAPI = FastAPI(
+    lifespan=lifespan,
     title="Torrent Downloader API",
     version=importlib.metadata.version("torrent-downloader"),
     description=(

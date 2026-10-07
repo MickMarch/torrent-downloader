@@ -7,6 +7,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- Credential health: `GET /api/v1/health` reports a `credentials` map for the
+  TMDB key and the qBittorrent WebUI key. A refusal on any live call marks the
+  key invalid at once; a slow probe (`CREDENTIAL_CHECK_INTERVAL_SECONDS`, also
+  the runtime setting `credential_check_interval_seconds`) covers keys that
+  expire while idle (MickMarch/medialab#136).
+
 ## [1.22.0] - 2026-10-05
 
 ### Added

@@ -5,6 +5,7 @@ from typing import Any
 
 import requests
 from medialab_contracts import (
+    CREDENTIAL_TMDB_API_KEY,
     DiscoverItem,
     DiscoverResponse,
     Episode,
@@ -19,12 +20,15 @@ from medialab_contracts import (
 
 from torrent_downloader.core.cache import app_cache
 from torrent_downloader.core.config import config
+from torrent_downloader.core.credentials import credentials
 
 TMDB_BASE_URL: str = "https://api.themoviedb.org/3"
 TMDB_SEARCH_URL: str = f"{TMDB_BASE_URL}/search/multi"
 TMDB_MOVIE_URL: str = f"{TMDB_BASE_URL}/movie"
 TMDB_TV_URL: str = f"{TMDB_BASE_URL}/tv"
 HTTP_STATUS_OK: int = 200
+HTTP_STATUS_UNAUTHORIZED: int = 401
+TMDB_CONFIGURATION_URL: str = f"{TMDB_BASE_URL}/configuration"
 VALID_MEDIA_TYPES: set[str] = {"movie", "tv"}
 TMDB_REQUEST_TIMEOUT_SECONDS: int = 10
 
@@ -37,9 +41,28 @@ def _get_or_unavailable(url: str, params: dict[str, Any]) -> requests.Response:
     """One TMDB GET. A transport failure (DNS, timeout, refused) is a typed
     error, never silently an empty result."""
     try:
-        return requests.get(url, params=params, timeout=TMDB_REQUEST_TIMEOUT_SECONDS)
+        response = requests.get(url, params=params, timeout=TMDB_REQUEST_TIMEOUT_SECONDS)
     except requests.RequestException as error:
+        credentials.mark_unreachable(CREDENTIAL_TMDB_API_KEY, str(error))
         raise TmdbUnavailableError(f"TMDB request failed: {url}") from error
+    if response.status_code == HTTP_STATUS_UNAUTHORIZED:
+        credentials.mark_invalid(
+            CREDENTIAL_TMDB_API_KEY, f"TMDB returned HTTP {response.status_code}"
+        )
+    elif response.status_code == HTTP_STATUS_OK:
+        credentials.mark_ok(CREDENTIAL_TMDB_API_KEY)
+    return response
+
+
+def probe_tmdb() -> None:
+    """One read-only call that exercises the key; the GET path records the outcome."""
+    if not config.tmdb_api_key:
+        credentials.mark_invalid(CREDENTIAL_TMDB_API_KEY, "TMDB API key is not configured")
+        return
+    try:
+        _get_or_unavailable(TMDB_CONFIGURATION_URL, {"api_key": config.tmdb_api_key})
+    except TmdbUnavailableError:
+        return
 
 
 @app_cache.memoize(expire=config.cache_expiration_seconds)
