@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.24.0] - 2026-10-30
+
 ### Added
 
 - `GET /search/torrents/pick` accepts `media_type=movie` (no season or
