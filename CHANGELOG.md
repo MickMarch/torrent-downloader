@@ -14,6 +14,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   TV season or episode. `media_type` defaults to `show`, so existing callers
   are unchanged (MickMarch/medialab#142).
 
+### Security
+
+- Bump `certifi` to 2026.10.23 for PYSEC-2026-4320.
+
 ## [1.23.0] - 2026-10-07
 
 ### Added
