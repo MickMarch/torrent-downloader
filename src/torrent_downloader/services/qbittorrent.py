@@ -556,25 +556,35 @@ def is_exact_episode(name: str, season: int, episode: int) -> bool:
     return _parsed_seasons(parsed.get("season")) == [season] and parsed.get("episode") == episode
 
 
+def is_movie_release(name: str) -> bool:
+    """Whether a release name carries no parsed season or episode, so it cannot
+    be a TV release that happens to share a movie's title."""
+    parsed: dict[str, Any] = PTN.parse(name)
+    return parsed.get("season") is None and parsed.get("episode") is None
+
+
 def pick_best(
     grouped: dict[str, list[TorrentResult]],
     *,
-    season: int,
+    season: int | None,
     episode: int | None,
     resolution: str,
     min_seeders: int,
 ) -> TorrentResult | None:
-    """The automatic pick rule over grouped show search results.
+    """The automatic pick rule over grouped search results.
 
     Pure: no I/O and ``grouped`` is not modified. In order: only releases
     naming exactly this episode (or, with ``episode`` unset, exactly this
-    season's pack), only those with at least ``min_seeders``,
+    season's pack; with ``season`` unset too, a movie release), only those
+    with at least ``min_seeders``,
     the ``resolution`` bucket or failing that each lower bucket in
     ``PICK_RESOLUTION_ORDER`` (never ``Other``), then the most seeded release,
     ties broken by the larger file. ``None`` when nothing qualifies.
     """
 
     def targets(name: str) -> bool:
+        if season is None:
+            return is_movie_release(name)
         if episode is None:
             return is_exact_season_pack(name, season)
         return is_exact_episode(name, season, episode)
