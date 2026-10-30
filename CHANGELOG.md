@@ -7,6 +7,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- `GET /search/torrents/pick` accepts `media_type=movie` (no season or
+  episode) and picks a movie release, skipping any release that parses as a
+  TV season or episode. `media_type` defaults to `show`, so existing callers
+  are unchanged (MickMarch/medialab#142).
+
 ## [1.23.0] - 2026-10-07
 
 ### Added

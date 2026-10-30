@@ -195,7 +195,7 @@ def api_search_progress(
     "/torrents/pick",
     response_model=TorrentResult,
     status_code=fastapi_status.HTTP_200_OK,
-    summary="Runs an episode or season search and returns the one release the pick rule chooses.",
+    summary="Runs a movie, season or episode search and returns the release the pick rule chooses.",
     responses={
         **_SEARCH_ERROR_RESPONSES,
         404: {"model": ErrorResponse, "description": "No release satisfies the pick rule."},
@@ -206,8 +206,9 @@ def api_search_progress(
 def api_pick_torrent(
     request: Request,
     query: str,
-    season: int,
     resolution: str,
+    media_type: MediaType = MediaType.SHOW,
+    season: int | None = None,
     episode: int | None = None,
     min_seeders: int | None = Query(default=None, ge=MIN_SEEDERS_FLOOR),
     alt_query: str | None = None,
@@ -215,11 +216,12 @@ def api_pick_torrent(
         default=None, ge=_SEARCH_TIMEOUT_SPEC.min, le=_SEARCH_TIMEOUT_SPEC.max
     ),
 ) -> TorrentResult:
-    """The same show search as ``/torrents`` for one episode, or for one
-    season's pack when ``episode`` is unset, reduced to a single release by
-    ``pick_best``. ``resolution`` is one of the pick buckets; ``min_seeders``
-    defaults to the configured minimum; ``timeout_seconds`` makes this one
-    search wait longer than the configured timeout and skip the cache.
+    """The same search as ``/torrents`` for one episode, one season's pack
+    when ``episode`` is unset, or a movie when ``media_type`` is ``movie``,
+    reduced to a single release by ``pick_best``. A show needs ``season``.
+    ``resolution`` is one of the pick buckets; ``min_seeders`` defaults to
+    the configured minimum; ``timeout_seconds`` makes this one search wait
+    longer than the configured timeout and skip the cache.
     """
     if resolution not in PICK_RESOLUTION_ORDER:
         raise AppException(
@@ -227,9 +229,15 @@ def api_pick_torrent(
             code=ErrorCode.INVALID_INPUT,
             detail=f"resolution must be one of: {', '.join(PICK_RESOLUTION_ORDER)}.",
         )
+    if media_type is MediaType.SHOW and season is None:
+        raise AppException(
+            status_code=fastapi_status.HTTP_422_UNPROCESSABLE_CONTENT,
+            code=ErrorCode.INVALID_INPUT,
+            detail="A show pick needs a season.",
+        )
     try:
         scope: TorrentSearchScope = TorrentSearchScope(
-            media_type=MediaType.SHOW, season=season, episode=episode
+            media_type=media_type, season=season, episode=episode
         )
     except ValidationError as error:
         raise AppException(

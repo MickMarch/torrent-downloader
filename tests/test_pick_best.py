@@ -8,6 +8,7 @@ from torrent_downloader.services.qbittorrent import (
     RES_GROUP_1080,
     RES_GROUP_OTHER,
     is_exact_season_pack,
+    is_movie_release,
     pick_best,
 )
 
@@ -196,3 +197,44 @@ class TestSeasonScope:
         lower_bucket = _result("The.Wire.S02.720p.WEB", seeders=60)
         grouped = {RES_GROUP_1080: [low], RES_GROUP_720: [lower_bucket]}
         assert _pick(grouped, episode=None, min_seeders=50) == lower_bucket
+
+
+class TestMovieReleaseRule:
+    def test_accepts_movie_release_names(self) -> None:
+        for name in ("The.Godfather.1972.1080p.BluRay", "The Godfather (1972) 2160p UHD"):
+            assert is_movie_release(name), name
+
+    def test_rejects_episodes_and_season_packs(self) -> None:
+        for name in ("The.Godfather.S01E01.1080p", "The.Godfather.S01.1080p"):
+            assert not is_movie_release(name), name
+
+
+class TestMovieScope:
+    def test_picks_the_most_seeded_movie_release(self) -> None:
+        low = _result("The.Godfather.1972.1080p.WEB", seeders=40)
+        high = _result("The.Godfather.1972.1080p.BluRay", seeders=90)
+        grouped = {RES_GROUP_1080: [low, high]}
+        assert (
+            pick_best(
+                grouped, season=None, episode=None, resolution=RES_GROUP_1080, min_seeders=NO_FLOOR
+            )
+            == high
+        )
+
+    def test_tv_named_release_is_never_picked_for_a_movie(self) -> None:
+        grouped = {RES_GROUP_1080: [_result("The.Godfather.S01E01.1080p", seeders=900)]}
+        assert (
+            pick_best(
+                grouped, season=None, episode=None, resolution=RES_GROUP_1080, min_seeders=NO_FLOOR
+            )
+            is None
+        )
+
+    def test_seeder_floor_and_bucket_fallback_apply_to_movies(self) -> None:
+        low = _result("The.Godfather.1972.1080p.WEB", seeders=10)
+        lower_bucket = _result("The.Godfather.1972.720p.WEB", seeders=60)
+        grouped = {RES_GROUP_1080: [low], RES_GROUP_720: [lower_bucket]}
+        assert (
+            pick_best(grouped, season=None, episode=None, resolution=RES_GROUP_1080, min_seeders=50)
+            == lower_bucket
+        )

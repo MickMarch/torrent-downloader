@@ -13,6 +13,7 @@ PICK_URL = "/api/v1/search/torrents/pick"
 SEARCH_ROUTER = "torrent_downloader.routers.search"
 
 EPISODE_PARAMS = {"query": "the wire", "season": 2, "episode": 5, "resolution": "1080p"}
+MOVIE_PARAMS = {"query": "the godfather 1972", "media_type": "movie", "resolution": "1080p"}
 
 
 def _make_torrent(name: str, seeders: int, url: str) -> dict[str, Any]:
@@ -30,6 +31,8 @@ def _make_torrent(name: str, seeders: int, url: str) -> dict[str, Any]:
 EXACT_1080 = _make_torrent("The.Wire.S02E05.1080p.WEB", 80, "magnet:?xt=urn:btih:aaa")
 EXACT_720 = _make_torrent("The.Wire.S02E05.720p.WEB", 30, "magnet:?xt=urn:btih:bbb")
 SEASON_PACK = _make_torrent("The.Wire.S02.1080p.BluRay", 900, "magnet:?xt=urn:btih:ccc")
+
+MOVIE_1080 = _make_torrent("The.Godfather.1972.1080p.BluRay", 120, "magnet:?xt=urn:btih:ddd")
 
 MOCK_RESULTS: list[dict[str, Any]] = [SEASON_PACK, EXACT_1080, EXACT_720]
 
@@ -190,6 +193,40 @@ class TestPickValidation:
         _patch_pipeline(mocker, MOCK_RESULTS)
         response = client.get(PICK_URL, params={**EPISODE_PARAMS, "min_seeders": -1})
         assert response.status_code == 422
+
+
+class TestPickMovieScope:
+    def test_movie_picks_a_movie_release(self, client: TestClient, mocker: MockerFixture) -> None:
+        _patch_pipeline(mocker, [SEASON_PACK, MOVIE_1080])
+        mocker.patch(f"{SEARCH_ROUTER}._movie_bare_title_pass", return_value=[])
+        response = client.get(PICK_URL, params=MOVIE_PARAMS)
+        assert response.status_code == 200
+        assert response.json()["fileName"] == MOVIE_1080["fileName"]
+
+    def test_movie_searches_the_movie_scope(
+        self, client: TestClient, mocker: MockerFixture
+    ) -> None:
+        _patch_pipeline(mocker, [MOVIE_1080])
+        mocker.patch(f"{SEARCH_ROUTER}._movie_bare_title_pass", return_value=[])
+        search = mocker.patch(f"{SEARCH_ROUTER}.search_torrents", return_value=[MOVIE_1080])
+        client.get(PICK_URL, params=MOVIE_PARAMS)
+        scope = search.call_args.args[2]
+        assert (scope.media_type.value, scope.season, scope.episode) == ("movie", None, None)
+
+    def test_movie_with_a_season_is_422(self, client: TestClient, mocker: MockerFixture) -> None:
+        _patch_pipeline(mocker, [MOVIE_1080])
+        response = client.get(PICK_URL, params={**MOVIE_PARAMS, "season": 1})
+        assert response.status_code == 422
+        assert response.json()["code"] == ErrorCode.INVALID_INPUT.value
+
+    def test_movie_with_no_candidate_is_404(
+        self, client: TestClient, mocker: MockerFixture
+    ) -> None:
+        _patch_pipeline(mocker, [SEASON_PACK])
+        mocker.patch(f"{SEARCH_ROUTER}._movie_bare_title_pass", return_value=[])
+        response = client.get(PICK_URL, params=MOVIE_PARAMS)
+        assert response.status_code == 404
+        assert response.json()["code"] == ErrorCode.NO_CANDIDATE.value
 
 
 class TestPickSeederFloor:
