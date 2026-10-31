@@ -9,6 +9,7 @@ from torrent_downloader.services.qbittorrent import (
     RES_GROUP_OTHER,
     is_exact_season_pack,
     is_movie_release,
+    is_pre_release,
     pick_best,
 )
 
@@ -238,3 +239,50 @@ class TestMovieScope:
             pick_best(grouped, season=None, episode=None, resolution=RES_GROUP_1080, min_seeders=50)
             == lower_bucket
         )
+
+
+class TestPreReleaseRule:
+    def test_detects_cam_telesync_telecine_and_screener(self) -> None:
+        for name in (
+            "Dune.2026.HDCAM.1080p.x264",
+            "Dune.2026.CAM.720p",
+            "Dune.2026.HDTS.1080p",
+            "Dune.2026.TELESYNC.1080p",
+            "Dune.2026.HD-TC.1080p",
+            "Dune.2026.DVDSCR.x264",
+            "Dune.2026.PDVD",
+        ):
+            assert is_pre_release(name), name
+
+    def test_retail_and_web_releases_pass(self) -> None:
+        for name in ("Dune.2026.1080p.WEB-DL", "Dune.2026.1080p.BluRay", "Dune.2026.WEBRip.1080p"):
+            assert not is_pre_release(name), name
+
+
+class TestPreReleaseNeverPicked:
+    def test_movie_cam_is_skipped_for_a_lower_seeded_web_release(self) -> None:
+        cam = _result("Dune.2026.HDCAM.1080p", seeders=900)
+        web = _result("Dune.2026.1080p.WEB-DL", seeders=20)
+        grouped = {RES_GROUP_1080: [cam, web]}
+        assert (
+            pick_best(
+                grouped, season=None, episode=None, resolution=RES_GROUP_1080, min_seeders=NO_FLOOR
+            )
+            == web
+        )
+
+    def test_movie_with_only_cams_is_none(self) -> None:
+        grouped = {
+            RES_GROUP_1080: [_result("Dune.2026.HDCAM.1080p", seeders=900)],
+            RES_GROUP_720: [_result("Dune.2026.TS.720p", seeders=500)],
+        }
+        assert (
+            pick_best(
+                grouped, season=None, episode=None, resolution=RES_GROUP_1080, min_seeders=NO_FLOOR
+            )
+            is None
+        )
+
+    def test_episode_telesync_is_never_picked(self) -> None:
+        grouped = {RES_GROUP_1080: [_result("The.Wire.S02E05.HDTS.1080p", seeders=900)]}
+        assert _pick(grouped) is None
