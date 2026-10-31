@@ -18,6 +18,7 @@ from torrent_downloader.services.tmdb import (
     TmdbUnavailableError,
     get_discover,
     get_genres,
+    get_recommendations,
 )
 
 MOVIE_PAGE: dict[str, Any] = {
@@ -236,3 +237,175 @@ class TestFailures:
         mocker.patch.object(tmdb.requests, "get", side_effect=requests.ConnectionError("down"))
         with pytest.raises(TmdbUnavailableError):
             get_genres(MediaType.MOVIE)
+
+
+TODAY = "2026-10-30"
+
+
+@pytest.fixture
+def today(mocker: MockerFixture) -> None:
+    mocker.patch.object(tmdb, "_today", return_value=TODAY)
+
+
+def _release_dates(*entries: tuple[int, str]) -> dict[str, Any]:
+    return {
+        "results": [
+            {
+                "iso_3166_1": "US",
+                "release_dates": [
+                    {"type": kind, "release_date": f"{date}T00:00:00.000Z"}
+                    for kind, date in entries
+                ],
+            }
+        ]
+    }
+
+
+def _routed_get(mocker: MockerFixture, routes: dict[str, dict[str, Any]]) -> MagicMock:
+    """requests.get answering by URL suffix, so one test can serve several TMDB paths."""
+
+    def fake_get(url: str, params: dict[str, Any], timeout: int) -> MagicMock:
+        for suffix, payload in routes.items():
+            if url.endswith(suffix):
+                return _response(payload)
+        raise AssertionError(f"unexpected TMDB call {url}")
+
+    return mocker.patch.object(tmdb.requests, "get", side_effect=fake_get)
+
+
+class TestReleasedDiscover:
+    def test_movie_released_uses_discover_with_home_release_filter(
+        self, cache, today, mocker: MockerFixture
+    ) -> None:
+        mock_get = _mock_get(mocker, MOVIE_PAGE)
+        get_discover(MediaType.MOVIE, released=True)
+        url, params = _called_url_and_params(mock_get)
+        assert url.endswith("/discover/movie")
+        assert params["with_release_type"] == "4|5"
+        assert params["release_date.lte"] == TODAY
+        assert params["sort_by"] == "popularity.desc"
+        assert params["vote_count.gte"] == DISCOVER_MIN_VOTES
+
+    def test_show_released_is_trending_minus_unaired(
+        self, cache, today, mocker: MockerFixture
+    ) -> None:
+        page = {
+            "page": 1,
+            "total_pages": 1,
+            "results": [
+                {"id": 21, "name": "Aired", "first_air_date": "2026-09-01"},
+                {"id": 22, "name": "Premieres soon", "first_air_date": "2026-12-01"},
+                {"id": 23, "name": "Undated", "first_air_date": ""},
+            ],
+        }
+        mock_get = _mock_get(mocker, page)
+        result = get_discover(MediaType.SHOW, released=True)
+        url, params = _called_url_and_params(mock_get)
+        assert url.endswith("/trending/tv/week")
+        assert "with_release_type" not in params
+        assert [i.tmdb_id for i in result.items] == [21]
+
+    def test_show_released_with_genre_uses_discover_with_air_date(
+        self, cache, today, mocker: MockerFixture
+    ) -> None:
+        mock_get = _mock_get(mocker, SHOW_PAGE)
+        get_discover(MediaType.SHOW, genre=18, released=True)
+        url, params = _called_url_and_params(mock_get)
+        assert url.endswith("/discover/tv")
+        assert params["first_air_date.lte"] == TODAY
+
+    def test_released_combines_with_genre(self, cache, today, mocker: MockerFixture) -> None:
+        mock_get = _mock_get(mocker, MOVIE_PAGE)
+        get_discover(MediaType.MOVIE, genre=28, released=True)
+        _, params = _called_url_and_params(mock_get)
+        assert params["with_genres"] == 28
+        assert params["with_release_type"] == "4|5"
+
+    def test_released_and_trending_cache_separately(
+        self, cache, today, mocker: MockerFixture
+    ) -> None:
+        mock_get = _mock_get(mocker, MOVIE_PAGE)
+        get_discover(MediaType.MOVIE)
+        get_discover(MediaType.MOVIE, released=True)
+        get_discover(MediaType.MOVIE, released=True)
+        assert mock_get.call_count == 2
+
+
+RECOMMENDATIONS: dict[str, Any] = {
+    "page": 1,
+    "total_pages": 2,
+    "results": [
+        {"id": 11, "title": "Out on disc", "release_date": "2024-01-01"},
+        {"id": 12, "title": "Theaters only", "release_date": "2026-10-20"},
+        {"id": 13, "title": "Digital today", "release_date": "2026-08-01"},
+        {"id": 14, "title": "Not yet", "release_date": "2023-05-05"},
+    ],
+}
+
+
+class TestRecommendations:
+    def test_unfiltered_returns_tmdb_order(self, cache, mocker: MockerFixture) -> None:
+        mock_get = _routed_get(mocker, {"/movie/238/recommendations": RECOMMENDATIONS})
+        result = get_recommendations(MediaType.MOVIE, 238)
+        assert [i.tmdb_id for i in result.items] == [11, 12, 13, 14]
+        assert mock_get.call_count == 1
+
+    def test_released_movies_need_a_digital_or_physical_date_by_today(
+        self, cache, today, mocker: MockerFixture
+    ) -> None:
+        _routed_get(
+            mocker,
+            {
+                "/movie/238/recommendations": RECOMMENDATIONS,
+                "/movie/11/release_dates": _release_dates((3, "2023-06-01"), (5, "2023-12-01")),
+                "/movie/12/release_dates": _release_dates((3, "2026-10-20")),
+                "/movie/13/release_dates": _release_dates((3, "2026-08-01"), (4, TODAY)),
+                "/movie/14/release_dates": _release_dates((4, "2027-01-01")),
+            },
+        )
+        result = get_recommendations(MediaType.MOVIE, 238, released=True)
+        assert [i.tmdb_id for i in result.items] == [11, 13]
+
+    def test_limit_stops_release_checks_early(self, cache, today, mocker: MockerFixture) -> None:
+        mock_get = _routed_get(
+            mocker,
+            {
+                "/movie/238/recommendations": RECOMMENDATIONS,
+                "/movie/11/release_dates": _release_dates((4, "2024-01-01")),
+            },
+        )
+        result = get_recommendations(MediaType.MOVIE, 238, released=True, limit=1)
+        assert [i.tmdb_id for i in result.items] == [11]
+        assert mock_get.call_count == 2
+
+    def test_released_shows_need_a_first_air_date_by_today(
+        self, cache, today, mocker: MockerFixture
+    ) -> None:
+        shows = {
+            "results": [
+                {"id": 21, "name": "Aired", "first_air_date": "2020-01-01"},
+                {"id": 22, "name": "Upcoming", "first_air_date": "2027-03-01"},
+                {"id": 23, "name": "Undated", "first_air_date": ""},
+            ]
+        }
+        _routed_get(mocker, {"/tv/1396/recommendations": shows})
+        result = get_recommendations(MediaType.SHOW, 1396, released=True)
+        assert [i.tmdb_id for i in result.items] == [21]
+
+    def test_release_dates_are_cached_per_movie(self, cache, today, mocker: MockerFixture) -> None:
+        routes = {
+            "/movie/238/recommendations": {"results": [RECOMMENDATIONS["results"][0]]},
+            "/movie/603/recommendations": {"results": [RECOMMENDATIONS["results"][0]]},
+            "/movie/11/release_dates": _release_dates((4, "2024-01-01")),
+        }
+        mock_get = _routed_get(mocker, routes)
+        get_recommendations(MediaType.MOVIE, 238, released=True)
+        get_recommendations(MediaType.MOVIE, 603, released=True)
+        release_calls = [c for c in mock_get.call_args_list if "release_dates" in c.args[0]]
+        assert len(release_calls) == 1
+
+    def test_result_is_cached(self, cache, mocker: MockerFixture) -> None:
+        mock_get = _routed_get(mocker, {"/movie/238/recommendations": RECOMMENDATIONS})
+        get_recommendations(MediaType.MOVIE, 238)
+        get_recommendations(MediaType.MOVIE, 238)
+        assert mock_get.call_count == 1
