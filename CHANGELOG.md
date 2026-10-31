@@ -7,6 +7,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+
+- The automatic pick (`GET /search/torrents/pick`) never chooses a cam,
+  telesync, telecine or screener release, which could sit in a resolution
+  bucket (`HDCAM 1080p`) and outrank retail releases on seeders. Applies to
+  movie picks and show follows; manual search is unchanged
+  (MickMarch/medialab#142).
+
 ## [1.24.0] - 2026-10-30
 
 ### Added

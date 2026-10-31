@@ -213,6 +213,14 @@ class TestPickMovieScope:
         scope = search.call_args.args[2]
         assert (scope.media_type.value, scope.season, scope.episode) == ("movie", None, None)
 
+    def test_movie_cam_is_never_picked(self, client: TestClient, mocker: MockerFixture) -> None:
+        cam = _make_torrent("The.Godfather.1972.HDCAM.1080p", 900, "magnet:?xt=urn:btih:eee")
+        _patch_pipeline(mocker, [cam])
+        mocker.patch(f"{SEARCH_ROUTER}._movie_bare_title_pass", return_value=[])
+        response = client.get(PICK_URL, params=MOVIE_PARAMS)
+        assert response.status_code == 404
+        assert response.json()["code"] == ErrorCode.NO_CANDIDATE.value
+
     def test_movie_with_a_season_is_422(self, client: TestClient, mocker: MockerFixture) -> None:
         _patch_pipeline(mocker, [MOVIE_1080])
         response = client.get(PICK_URL, params={**MOVIE_PARAMS, "season": 1})

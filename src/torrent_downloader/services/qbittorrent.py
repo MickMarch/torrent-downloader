@@ -64,6 +64,9 @@ RES_GROUP_OTHER: str = "Other"
 # through to the next lower bucket when the requested one is empty and never
 # reaches ``Other``.
 PICK_RESOLUTION_ORDER: tuple[str, ...] = (RES_GROUP_4K, RES_GROUP_1080, RES_GROUP_720)
+# PTN quality values for theatrical captures and pre-release screeners. An
+# automatic pick never takes one; manual search still lists them.
+PRE_RELEASE_QUALITIES: frozenset[str] = frozenset({"Cam", "Telesync", "Telecine", "Screener"})
 
 MAGNET_URL_PREFIX: str = "magnet:?"
 TORRENT_FILE_SUFFIX: str = ".torrent"
@@ -563,6 +566,12 @@ def is_movie_release(name: str) -> bool:
     return parsed.get("season") is None and parsed.get("episode") is None
 
 
+def is_pre_release(name: str) -> bool:
+    """Whether a release name parses as a cam, telesync, telecine or screener."""
+    parsed: dict[str, Any] = PTN.parse(name)
+    return parsed.get("quality") in PRE_RELEASE_QUALITIES
+
+
 def pick_best(
     grouped: dict[str, list[TorrentResult]],
     *,
@@ -575,8 +584,9 @@ def pick_best(
 
     Pure: no I/O and ``grouped`` is not modified. In order: only releases
     naming exactly this episode (or, with ``episode`` unset, exactly this
-    season's pack; with ``season`` unset too, a movie release), only those
-    with at least ``min_seeders``,
+    season's pack; with ``season`` unset too, a movie release), never a
+    pre-release capture (``PRE_RELEASE_QUALITIES``), only those with at
+    least ``min_seeders``,
     the ``resolution`` bucket or failing that each lower bucket in
     ``PICK_RESOLUTION_ORDER`` (never ``Other``), then the most seeded release,
     ties broken by the larger file. ``None`` when nothing qualifies.
@@ -594,7 +604,9 @@ def pick_best(
         candidates: list[TorrentResult] = [
             result
             for result in grouped.get(bucket, [])
-            if result.nbSeeders >= min_seeders and targets(result.fileName)
+            if result.nbSeeders >= min_seeders
+            and targets(result.fileName)
+            and not is_pre_release(result.fileName)
         ]
         if candidates:
             return max(candidates, key=lambda result: (result.nbSeeders, result.fileSize))
