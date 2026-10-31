@@ -49,14 +49,14 @@ class TestDiscoverRoute:
     def test_passes_type_genre_and_page(self, client: TestClient, mocker: MockerFixture) -> None:
         mock = mocker.patch(f"{ROUTER}.get_discover", return_value=DISCOVER_RESULT)
         client.get(f"{DISCOVER_URL}/movie", params={"genre": 28, "page": 3})
-        mock.assert_called_once_with(MediaType.MOVIE, genre=28, page=3)
+        mock.assert_called_once_with(MediaType.MOVIE, genre=28, page=3, released=False)
 
     def test_defaults_to_first_page_without_genre(
         self, client: TestClient, mocker: MockerFixture
     ) -> None:
         mock = mocker.patch(f"{ROUTER}.get_discover", return_value=DISCOVER_RESULT)
         client.get(f"{DISCOVER_URL}/movie")
-        mock.assert_called_once_with(MediaType.MOVIE, genre=None, page=1)
+        mock.assert_called_once_with(MediaType.MOVIE, genre=None, page=1, released=False)
 
     def test_tmdb_media_type_tv_is_rejected(self, client: TestClient) -> None:
         response = client.get(f"{DISCOVER_URL}/tv")
@@ -77,6 +77,38 @@ class TestDiscoverRoute:
         from torrent_downloader.main import app
 
         assert TestClient(app).get(f"{DISCOVER_URL}/movie").status_code == 403
+
+
+class TestReleasedFlag:
+    def test_released_is_passed_through(self, client: TestClient, mocker: MockerFixture) -> None:
+        mock = mocker.patch(f"{ROUTER}.get_discover", return_value=DISCOVER_RESULT)
+        client.get(f"{DISCOVER_URL}/movie", params={"released": "true"})
+        mock.assert_called_once_with(MediaType.MOVIE, genre=None, page=1, released=True)
+
+
+class TestRecommendationsRoute:
+    def test_returns_contract_shape(self, client: TestClient, mocker: MockerFixture) -> None:
+        mock = mocker.patch(f"{ROUTER}.get_recommendations", return_value=DISCOVER_RESULT)
+        response = client.get(
+            f"{DISCOVER_URL}/show/recommendations/1396", params={"released": "true", "limit": 5}
+        )
+        assert response.status_code == 200
+        assert DiscoverResponse.model_validate(response.json()) == DISCOVER_RESULT
+        mock.assert_called_once_with(MediaType.SHOW, 1396, released=True, limit=5)
+
+    def test_defaults(self, client: TestClient, mocker: MockerFixture) -> None:
+        mock = mocker.patch(f"{ROUTER}.get_recommendations", return_value=DISCOVER_RESULT)
+        client.get(f"{DISCOVER_URL}/movie/recommendations/238")
+        mock.assert_called_once_with(MediaType.MOVIE, 238, released=False, limit=None)
+
+    def test_limit_below_one_is_rejected(self, client: TestClient) -> None:
+        response = client.get(f"{DISCOVER_URL}/movie/recommendations/238", params={"limit": 0})
+        assert response.status_code == 422
+
+    def test_tmdb_unavailable_is_503(self, client: TestClient, mocker: MockerFixture) -> None:
+        mocker.patch(f"{ROUTER}.get_recommendations", side_effect=TmdbUnavailableError("down"))
+        response = client.get(f"{DISCOVER_URL}/movie/recommendations/238")
+        assert response.status_code == 503
 
 
 class TestGenresRoute:

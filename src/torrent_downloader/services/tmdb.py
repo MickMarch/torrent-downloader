@@ -157,6 +157,8 @@ YEAR_LENGTH: int = 4
 ENDPOINT_TRENDING: str = "trending"
 ENDPOINT_DISCOVER: str = "discover"
 ENDPOINT_GENRES: str = "genre"
+ENDPOINT_RECOMMENDATIONS: str = "recommendations"
+ENDPOINT_RELEASE_DATES: str = "release_dates"
 CACHE_NAMESPACE_DISCOVER: str = "tmdb_discover"
 
 TMDB_TYPE_BY_MEDIA_TYPE: dict[MediaType, str] = {
@@ -171,6 +173,25 @@ DATE_FIELD_BY_MEDIA_TYPE: dict[MediaType, str] = {
     MediaType.MOVIE: "release_date",
     MediaType.SHOW: "first_air_date",
 }
+
+# "Released" means out at home, where a retail-quality release can exist: a
+# movie with a digital (4) or physical (5) release date by today, a show that
+# has started airing. Theatrical-only movies have only cam releases. Shows have
+# no theatrical window, so released shows stay on trending (popularity alone
+# is dominated by decades-old procedurals) minus the ones not yet aired.
+RELEASE_TYPE_DIGITAL: int = 4
+RELEASE_TYPE_PHYSICAL: int = 5
+HOME_RELEASE_TYPES: frozenset[int] = frozenset({RELEASE_TYPE_DIGITAL, RELEASE_TYPE_PHYSICAL})
+RELEASE_TYPE_FILTER_SEPARATOR: str = "|"
+ISO_DATE_LENGTH: int = 10
+RELEASED_DATE_PARAM_BY_MEDIA_TYPE: dict[MediaType, str] = {
+    MediaType.MOVIE: "release_date.lte",
+    MediaType.SHOW: "first_air_date.lte",
+}
+
+
+def _today() -> str:
+    return datetime.now(UTC).date().isoformat()
 
 
 def _tmdb_get(path: str, params: dict[str, Any]) -> dict[str, Any]:
@@ -201,10 +222,19 @@ def _to_discover_item(raw: dict[str, Any], media_type: MediaType) -> DiscoverIte
 
 
 def get_discover(
-    media_type: MediaType, genre: int | None = None, page: int = TMDB_FIRST_PAGE
+    media_type: MediaType,
+    genre: int | None = None,
+    page: int = TMDB_FIRST_PAGE,
+    released: bool = False,
 ) -> DiscoverResponse:
-    """Trending titles this week, or the most popular in ``genre``, one TMDB page."""
-    endpoint: str = ENDPOINT_TRENDING if genre is None else ENDPOINT_DISCOVER
+    """One TMDB page: trending this week, or the most popular in ``genre``.
+    ``released`` keeps only titles out at home: movies switch to the most
+    popular with a home release (``HOME_RELEASE_TYPES``), shows stay on
+    trending (or the genre list) minus those not yet aired."""
+    released_movie: bool = released and media_type is MediaType.MOVIE
+    use_discover: bool = genre is not None or released_movie
+    endpoint: str = ENDPOINT_DISCOVER if use_discover else ENDPOINT_TRENDING
+    today: str | None = _today() if released else None
     key = (
         CACHE_NAMESPACE_DISCOVER,
         endpoint,
@@ -212,6 +242,7 @@ def get_discover(
         genre,
         page,
         config.target_language,
+        today,
     )
     cached = app_cache.get(key)
     if cached is not None:
@@ -219,21 +250,95 @@ def get_discover(
 
     tmdb_type: str = TMDB_TYPE_BY_MEDIA_TYPE[media_type]
     params: dict[str, Any] = {"page": page}
-    if genre is None:
+    if not use_discover:
         path = f"{ENDPOINT_TRENDING}/{tmdb_type}/{TRENDING_WINDOW}"
     else:
         path = f"{ENDPOINT_DISCOVER}/{tmdb_type}"
-        params |= {
-            "with_genres": genre,
-            "sort_by": DISCOVER_SORT_BY,
-            "vote_count.gte": DISCOVER_MIN_VOTES,
-        }
+        params |= {"sort_by": DISCOVER_SORT_BY, "vote_count.gte": DISCOVER_MIN_VOTES}
+        if genre is not None:
+            params["with_genres"] = genre
+        if today is not None:
+            params[RELEASED_DATE_PARAM_BY_MEDIA_TYPE[media_type]] = today
+            if released_movie:
+                params["with_release_type"] = RELEASE_TYPE_FILTER_SEPARATOR.join(
+                    str(kind) for kind in sorted(HOME_RELEASE_TYPES)
+                )
     data: dict[str, Any] = _tmdb_get(path, params)
 
+    results: list[dict[str, Any]] = data.get("results", [])
+    if today is not None and not use_discover:
+        results = [raw for raw in results if _is_released(raw, media_type, today)]
     result = DiscoverResponse(
-        items=[_to_discover_item(raw, media_type) for raw in data.get("results", [])],
+        items=[_to_discover_item(raw, media_type) for raw in results],
         page=data.get("page", page),
         total_pages=min(data.get("total_pages", page), TMDB_MAX_PAGE),
+        cached_at=datetime.now(UTC),
+    )
+    app_cache.set(key, result.model_dump(mode="json"), expire=config.discover_cache_seconds)
+    return result
+
+
+def _movie_home_release_dates(movie_id: int) -> list[str]:
+    """ISO dates of every digital or physical release of a movie, any region.
+    Cached per movie, since each recommendation list re-checks the same titles."""
+    key = (CACHE_NAMESPACE_DISCOVER, ENDPOINT_RELEASE_DATES, movie_id)
+    cached = app_cache.get(key)
+    if cached is not None:
+        return list(cached)
+    data: dict[str, Any] = _tmdb_get(f"movie/{movie_id}/{ENDPOINT_RELEASE_DATES}", {})
+    dates = [
+        entry.get("release_date", "")[:ISO_DATE_LENGTH]
+        for region in data.get("results", [])
+        for entry in region.get("release_dates", [])
+        if entry.get("type") in HOME_RELEASE_TYPES and entry.get("release_date")
+    ]
+    app_cache.set(key, dates, expire=config.discover_cache_seconds)
+    return dates
+
+
+def _is_released(raw: dict[str, Any], media_type: MediaType, today: str) -> bool:
+    if media_type is MediaType.SHOW:
+        first_air_date: str = raw.get(DATE_FIELD_BY_MEDIA_TYPE[media_type]) or ""
+        return bool(first_air_date) and first_air_date <= today
+    return any(date <= today for date in _movie_home_release_dates(raw["id"]))
+
+
+def get_recommendations(
+    media_type: MediaType, tmdb_id: int, released: bool = False, limit: int | None = None
+) -> DiscoverResponse:
+    """TMDB's recommendations for a title, first page, in TMDB's order.
+    ``released`` keeps only titles out at home; ``limit`` caps the list and
+    stops the per-title release checks once it is full."""
+    today: str | None = _today() if released else None
+    key = (
+        CACHE_NAMESPACE_DISCOVER,
+        ENDPOINT_RECOMMENDATIONS,
+        media_type.value,
+        tmdb_id,
+        limit,
+        config.target_language,
+        today,
+    )
+    cached = app_cache.get(key)
+    if cached is not None:
+        return DiscoverResponse.model_validate(cached)
+
+    tmdb_type: str = TMDB_TYPE_BY_MEDIA_TYPE[media_type]
+    data: dict[str, Any] = _tmdb_get(
+        f"{tmdb_type}/{tmdb_id}/{ENDPOINT_RECOMMENDATIONS}", {"page": TMDB_FIRST_PAGE}
+    )
+    items: list[DiscoverItem] = []
+    for raw in data.get("results", []):
+        if limit is not None and len(items) >= limit:
+            break
+        if today is not None and not _is_released(raw, media_type, today):
+            continue
+        items.append(_to_discover_item(raw, media_type))
+
+    result = DiscoverResponse(
+        items=items,
+        page=TMDB_FIRST_PAGE,
+        total_pages=TMDB_FIRST_PAGE,
         cached_at=datetime.now(UTC),
     )
     app_cache.set(key, result.model_dump(mode="json"), expire=config.discover_cache_seconds)

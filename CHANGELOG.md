@@ -7,6 +7,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- `released=true` on `GET /discover/{media_type}`: only titles out at home.
+  Movies come from the most popular with a digital or physical release dated
+  by today; shows stay on trending minus those not yet aired, since TV
+  popularity alone is led by decades-old procedurals (MickMarch/medialab#142).
+- `GET /discover/{media_type}/recommendations/{tmdb_id}` with `released` and
+  `limit`: TMDB recommendations for a title, release-checked per movie with
+  cached `release_dates` lookups (MickMarch/medialab#142).
+
 ## [1.24.1] - 2026-10-30
 
 ### Fixed
