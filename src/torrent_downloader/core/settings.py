@@ -27,6 +27,7 @@ from torrent_downloader.core.config import (
     AppConfig,
     config,
 )
+from torrent_downloader.core.constants import PickFallback
 from torrent_downloader.core.logger import app_logger
 from torrent_downloader.services.language import LanguageFilter
 
@@ -59,6 +60,16 @@ SETTINGS: tuple[SettingSpec, ...] = (
         min=0,
         max=1000,
         description="Releases with fewer seeders are dropped.",
+        applies=_APPLIES_NEXT_SEARCH,
+    ),
+    SettingSpec(
+        key="pick_resolution_fallback",
+        type=SettingType.CHOICE,
+        choices=[f.value for f in PickFallback],
+        description=(
+            "lower lets an automatic pick take the next lower resolution; "
+            "none picks nothing instead."
+        ),
         applies=_APPLIES_NEXT_SEARCH,
     ),
     SettingSpec(

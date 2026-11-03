@@ -9,6 +9,7 @@ from medialab_contracts import SettingSource
 
 from torrent_downloader.core import settings as settings_module
 from torrent_downloader.core.config import AppConfig
+from torrent_downloader.core.constants import PickFallback
 from torrent_downloader.core.settings import (
     SETTINGS,
     RuntimeSettings,
@@ -138,3 +139,21 @@ class TestRoutes:
         from torrent_downloader.main import app
 
         assert TestClient(app).get("/api/v1/settings").status_code == 403
+
+
+class TestPickFallbackSetting:
+    def test_defaults_to_lower(self, tmp_path: Path) -> None:
+        cfg, rt, _ = _runtime(tmp_path)
+        assert cfg.pick_resolution_fallback is PickFallback.LOWER
+        assert rt.view("pick_resolution_fallback").choices == ["lower", "none"]
+
+    def test_set_none_applies(self, tmp_path: Path) -> None:
+        cfg, rt, _ = _runtime(tmp_path)
+        rt.set("pick_resolution_fallback", "none")
+        assert cfg.pick_resolution_fallback is PickFallback.NONE
+
+    def test_rejects_values_outside_the_choices(self, tmp_path: Path) -> None:
+        cfg, rt, _ = _runtime(tmp_path)
+        with pytest.raises(ValueError):
+            rt.set("pick_resolution_fallback", "higher")
+        assert cfg.pick_resolution_fallback is PickFallback.LOWER

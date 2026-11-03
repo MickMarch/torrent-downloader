@@ -1,5 +1,7 @@
 """Unit tests for the automatic pick rule over grouped search results."""
 
+from medialab_contracts import PICK_RESOLUTIONS
+
 from torrent_downloader.schemas.torrents import TorrentResult
 from torrent_downloader.services.qbittorrent import (
     PICK_RESOLUTION_ORDER,
@@ -35,6 +37,7 @@ def _pick(
     resolution: str = RES_GROUP_1080,
     min_seeders: int = NO_FLOOR,
     episode: int | None = EPISODE,
+    fallback: bool = True,
 ) -> TorrentResult | None:
     return pick_best(
         grouped,
@@ -42,6 +45,7 @@ def _pick(
         episode=episode,
         resolution=resolution,
         min_seeders=min_seeders,
+        fallback=fallback,
     )
 
 
@@ -286,3 +290,17 @@ class TestPreReleaseNeverPicked:
     def test_episode_telesync_is_never_picked(self) -> None:
         grouped = {RES_GROUP_1080: [_result("The.Wire.S02E05.HDTS.1080p", seeders=900)]}
         assert _pick(grouped) is None
+
+
+class TestNoFallback:
+    def test_order_is_the_contracts_tuple(self) -> None:
+        assert PICK_RESOLUTION_ORDER == PICK_RESOLUTIONS
+
+    def test_lower_bucket_is_not_taken(self) -> None:
+        grouped = {RES_GROUP_720: [_result("Show.S02E05.720p.WEB")]}
+        assert _pick(grouped, fallback=False) is None
+
+    def test_requested_bucket_is_still_picked(self) -> None:
+        exact = _result("Show.S02E05.1080p.WEB")
+        grouped = {RES_GROUP_1080: [exact], RES_GROUP_720: [_result("Show.S02E05.720p.WEB", 900)]}
+        assert _pick(grouped, fallback=False) == exact
