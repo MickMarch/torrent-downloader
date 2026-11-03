@@ -15,7 +15,7 @@ from medialab_contracts import (
 from pydantic import ValidationError
 
 from torrent_downloader.core.config import config
-from torrent_downloader.core.constants import TAG_SEARCH
+from torrent_downloader.core.constants import TAG_SEARCH, PickFallback
 from torrent_downloader.core.errors import AppException, ErrorCode
 from torrent_downloader.core.limiter import RATE_LIMIT_DEFAULT, RATE_LIMIT_SEARCH, limiter
 from torrent_downloader.core.logger import app_logger
@@ -257,6 +257,7 @@ def api_pick_torrent(
         episode=episode,
         resolution=resolution,
         min_seeders=config.minimum_seeders if min_seeders is None else min_seeders,
+        fallback=config.pick_resolution_fallback is PickFallback.LOWER,
     )
     if picked is None:
         raise AppException(

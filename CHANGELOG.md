@@ -7,6 +7,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- `pick_resolution_fallback` runtime setting (`PICK_RESOLUTION_FALLBACK`):
+  `lower` (default) keeps today's pick, `none` stops `/search/torrents/pick`
+  from taking a lower resolution than requested (MickMarch/medialab#153).
+
+### Changed
+
+- The pick resolutions come from `medialab-contracts` `PICK_RESOLUTIONS`.
+
 ## [1.25.0] - 2026-10-31
 
 ### Added

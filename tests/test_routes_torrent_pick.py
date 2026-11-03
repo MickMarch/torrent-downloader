@@ -7,6 +7,7 @@ from fastapi.testclient import TestClient
 from pytest_mock import MockerFixture
 
 from torrent_downloader.core.config import config
+from torrent_downloader.core.constants import PickFallback
 from torrent_downloader.core.errors import ErrorCode
 
 PICK_URL = "/api/v1/search/torrents/pick"
@@ -270,3 +271,22 @@ class TestPickAuth:
         response = unauthed_client.get(PICK_URL, params=EPISODE_PARAMS)
         assert response.status_code == 403
         assert response.json()["code"] == ErrorCode.UNAUTHORIZED.value
+
+
+class TestPickFallbackSetting:
+    def test_none_returns_404_when_only_a_lower_bucket_qualifies(
+        self, client: TestClient, mocker: MockerFixture
+    ) -> None:
+        _patch_pipeline(mocker, [SEASON_PACK, EXACT_720])
+        mocker.patch.object(config, "pick_resolution_fallback", PickFallback.NONE)
+        response = client.get(PICK_URL, params=EPISODE_PARAMS)
+        assert response.status_code == 404
+        assert response.json()["code"] == ErrorCode.NO_CANDIDATE.value
+
+    def test_none_keeps_the_requested_bucket(
+        self, client: TestClient, mocker: MockerFixture
+    ) -> None:
+        _patch_pipeline(mocker, MOCK_RESULTS)
+        mocker.patch.object(config, "pick_resolution_fallback", PickFallback.NONE)
+        body = client.get(PICK_URL, params=EPISODE_PARAMS).json()
+        assert body["fileName"] == EXACT_1080["fileName"]

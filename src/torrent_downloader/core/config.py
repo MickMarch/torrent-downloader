@@ -3,6 +3,7 @@
 from pydantic import Field
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
+from torrent_downloader.core.constants import PickFallback
 from torrent_downloader.services.language import LanguageFilter
 
 VPN_INTERFACE_SEPARATOR: str = ","
@@ -36,6 +37,7 @@ class AppConfig(BaseSettings):
     # drop untagged ones; off: show tags only. See services/language.py.
     audio_language_filter: LanguageFilter = Field(default=LanguageFilter.LENIENT)
     minimum_seeders: int = Field(default=10)
+    pick_resolution_fallback: PickFallback = Field(default=PickFallback.LOWER)
     tmdb_api_key: str | None = Field(default=None)
 
     search_timeout_seconds: int = Field(default=15)

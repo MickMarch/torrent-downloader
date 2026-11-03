@@ -11,6 +11,7 @@ import PTN
 import qbittorrentapi
 from medialab_contracts import (
     CREDENTIAL_QB_API_KEY,
+    PICK_RESOLUTIONS,
     MediaType,
     TorrentSearchProgress,
     TorrentSearchScope,
@@ -63,7 +64,7 @@ RES_GROUP_OTHER: str = "Other"
 # Buckets an automatic pick may draw from, highest first. A pick falls
 # through to the next lower bucket when the requested one is empty and never
 # reaches ``Other``.
-PICK_RESOLUTION_ORDER: tuple[str, ...] = (RES_GROUP_4K, RES_GROUP_1080, RES_GROUP_720)
+PICK_RESOLUTION_ORDER: tuple[str, ...] = PICK_RESOLUTIONS
 # PTN quality values for theatrical captures and pre-release screeners. An
 # automatic pick never takes one; manual search still lists them.
 PRE_RELEASE_QUALITIES: frozenset[str] = frozenset({"Cam", "Telesync", "Telecine", "Screener"})
@@ -579,6 +580,7 @@ def pick_best(
     episode: int | None,
     resolution: str,
     min_seeders: int,
+    fallback: bool = True,
 ) -> TorrentResult | None:
     """The automatic pick rule over grouped search results.
 
@@ -587,8 +589,8 @@ def pick_best(
     season's pack; with ``season`` unset too, a movie release), never a
     pre-release capture (``PRE_RELEASE_QUALITIES``), only those with at
     least ``min_seeders``,
-    the ``resolution`` bucket or failing that each lower bucket in
-    ``PICK_RESOLUTION_ORDER`` (never ``Other``), then the most seeded release,
+    the ``resolution`` bucket or failing that, with ``fallback``, each lower
+    bucket in ``PICK_RESOLUTION_ORDER`` (never ``Other``), then the most seeded release,
     ties broken by the larger file. ``None`` when nothing qualifies.
     """
 
@@ -600,7 +602,8 @@ def pick_best(
         return is_exact_episode(name, season, episode)
 
     start: int = PICK_RESOLUTION_ORDER.index(resolution)
-    for bucket in PICK_RESOLUTION_ORDER[start:]:
+    buckets = PICK_RESOLUTION_ORDER[start:] if fallback else (resolution,)
+    for bucket in buckets:
         candidates: list[TorrentResult] = [
             result
             for result in grouped.get(bucket, [])
