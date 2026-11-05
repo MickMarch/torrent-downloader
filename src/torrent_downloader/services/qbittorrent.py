@@ -24,6 +24,7 @@ from torrent_downloader.core.credentials import credentials
 from torrent_downloader.core.logger import app_logger
 from torrent_downloader.schemas.torrents import TorrentResult
 from torrent_downloader.schemas.transfers import TransferInfo
+from torrent_downloader.services.numbering import parse_absolute_episode
 from torrent_downloader.services.search_progress import search_progress
 
 search_timeout_override: ContextVar[int | None] = ContextVar(
@@ -86,6 +87,7 @@ SEARCH_CATEGORY_BY_MEDIA_TYPE: dict[MediaType, str] = {
 SEASON_TAG_TEMPLATE: str = "S{season:02d}"
 SEASON_WORD_TEMPLATE: str = "Season {season}"
 EPISODE_TAG_TEMPLATE: str = "S{season:02d}E{episode:02d}"
+ABSOLUTE_TAG_TEMPLATE: str = "{absolute:02d}"
 # A movie query is "Title YYYY"; when that yields nothing the title alone is
 # searched and results are kept only when their parsed year matches.
 _TRAILING_YEAR = re.compile(r"^(?P<title>.+?)\s+(?P<year>(19|20)\d{2})$")
@@ -224,14 +226,17 @@ def is_vpn_bound(
         return False
 
 
-def build_search_patterns(query: str, scope: TorrentSearchScope) -> list[str]:
+def build_search_patterns(
+    query: str, scope: TorrentSearchScope, absolute: int | None = None
+) -> list[str]:
     """The plugin patterns a scope needs, most specific first.
 
     Whole-title and whole-series scopes search the bare query. A season scope
     searches ``Title S0N``, ``Title Season N`` (uploaders use either) and the
     bare title (complete-series packs only surface there); an episode scope
     searches ``Title S0NE0M`` and ``Title S0N`` so a season pack remains a
-    fallback.
+    fallback. With ``absolute``, an episode scope also searches the fansub
+    form ``Title NN`` before the season tag.
     """
     if scope.season is None:
         return [query]
@@ -242,7 +247,10 @@ def build_search_patterns(query: str, scope: TorrentSearchScope) -> list[str]:
     episode_tag = (
         f"{query} {EPISODE_TAG_TEMPLATE.format(season=scope.season, episode=scope.episode)}"
     )
-    return [episode_tag, season_tag]
+    if absolute is None:
+        return [episode_tag, season_tag]
+    absolute_tag = f"{query} {ABSOLUTE_TAG_TEMPLATE.format(absolute=absolute)}"
+    return [episode_tag, absolute_tag, season_tag]
 
 
 def build_search_pattern(query: str, scope: TorrentSearchScope) -> str:
@@ -445,25 +453,27 @@ def search_queries(query: str, alt_query: str | None) -> list[str]:
     return queries
 
 
-def request_patterns(queries: Sequence[str], scope: TorrentSearchScope) -> list[str]:
+def request_patterns(
+    queries: Sequence[str], scope: TorrentSearchScope, absolute: int | None = None
+) -> list[str]:
     """Every plugin pattern one search request runs: each query's scope
     patterns and, for a movie with a trailing year, the bare title's too.
     The prefetch runs exactly these; the progress endpoint reports on them."""
     patterns: list[str] = []
     for q in queries:
-        patterns.extend(build_search_patterns(q, scope))
+        patterns.extend(build_search_patterns(q, scope, absolute))
         if scope.media_type is MediaType.MOVIE and (split := split_trailing_year(q)):
             patterns.extend(build_search_patterns(split[0], scope))
     return list(dict.fromkeys(patterns))
 
 
 def search_progress_for(
-    query: str, alt_query: str | None, scope: TorrentSearchScope
+    query: str, alt_query: str | None, scope: TorrentSearchScope, absolute: int | None = None
 ) -> TorrentSearchProgress:
     """Where the search for these parameters stands, from the registry and
     the pattern cache; never touches qBittorrent."""
     category: str = SEARCH_CATEGORY_BY_MEDIA_TYPE[scope.media_type]
-    patterns = request_patterns(search_queries(query, alt_query), scope)
+    patterns = request_patterns(search_queries(query, alt_query), scope, absolute)
     return search_progress.aggregate(
         patterns,
         category,
@@ -473,11 +483,14 @@ def search_progress_for(
 
 
 def search_torrents(
-    client: qbittorrentapi.Client, query: str, scope: TorrentSearchScope
+    client: qbittorrentapi.Client,
+    query: str,
+    scope: TorrentSearchScope,
+    absolute: int | None = None,
 ) -> list[dict[str, Any]]:
     """Union of the raw results for every pattern the scope needs."""
     category: str = SEARCH_CATEGORY_BY_MEDIA_TYPE[scope.media_type]
-    patterns = build_search_patterns(query, scope)
+    patterns = build_search_patterns(query, scope, absolute)
     by_pattern = run_pattern_searches(client, patterns, category)
     parsed_results: list[dict[str, Any]] = union_by_url([by_pattern[p] for p in patterns])
     app_logger.info(f"Search for '{query}' completed. {len(parsed_results)} total results.")
@@ -560,6 +573,13 @@ def is_exact_episode(name: str, season: int, episode: int) -> bool:
     return _parsed_seasons(parsed.get("season")) == [season] and parsed.get("episode") == episode
 
 
+def is_absolute_episode(name: str, absolute: int) -> bool:
+    """Whether a fansub-style name (no parsed season) carries ``absolute``."""
+    if _parsed_seasons(PTN.parse(name).get("season")):
+        return False
+    return parse_absolute_episode(name) == absolute
+
+
 def is_movie_release(name: str) -> bool:
     """Whether a release name carries no parsed season or episode, so it cannot
     be a TV release that happens to share a movie's title."""
@@ -581,6 +601,8 @@ def pick_best(
     resolution: str,
     min_seeders: int,
     fallback: bool = True,
+    absolute: int | None = None,
+    prefer_multi_audio: bool = False,
 ) -> TorrentResult | None:
     """The automatic pick rule over grouped search results.
 
@@ -592,6 +614,9 @@ def pick_best(
     the ``resolution`` bucket or failing that, with ``fallback``, each lower
     bucket in ``PICK_RESOLUTION_ORDER`` (never ``Other``), then the most seeded release,
     ties broken by the larger file. ``None`` when nothing qualifies.
+    With ``absolute``, an episode also matches a fansub name carrying that
+    absolute number; ``prefer_multi_audio`` ranks multi audio releases first
+    inside a bucket, never past the seeder floor.
     """
 
     def targets(name: str) -> bool:
@@ -599,7 +624,12 @@ def pick_best(
             return is_movie_release(name)
         if episode is None:
             return is_exact_season_pack(name, season)
-        return is_exact_episode(name, season, episode)
+        if is_exact_episode(name, season, episode):
+            return True
+        return absolute is not None and is_absolute_episode(name, absolute)
+
+    def rank(result: TorrentResult) -> tuple[bool, int, int]:
+        return (prefer_multi_audio and result.multiAudio, result.nbSeeders, result.fileSize)
 
     start: int = PICK_RESOLUTION_ORDER.index(resolution)
     buckets = PICK_RESOLUTION_ORDER[start:] if fallback else (resolution,)
@@ -612,5 +642,5 @@ def pick_best(
             and not is_pre_release(result.fileName)
         ]
         if candidates:
-            return max(candidates, key=lambda result: (result.nbSeeders, result.fileSize))
+            return max(candidates, key=rank)
     return None

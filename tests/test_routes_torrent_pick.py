@@ -290,3 +290,25 @@ class TestPickFallbackSetting:
         mocker.patch.object(config, "pick_resolution_fallback", PickFallback.NONE)
         body = client.get(PICK_URL, params=EPISODE_PARAMS).json()
         assert body["fileName"] == EXACT_1080["fileName"]
+
+
+FANSUB = _make_torrent(
+    "[SubsPlease] Jujutsu Kaisen - 48 (1080p) [8BC8D419].mkv", 300, "magnet:?xt=urn:btih:eee"
+)
+DUAL = {**_make_torrent("The.Wire.S02E05.1080p.Dual.Audio", 20, "magnet:?xt=urn:btih:fff")}
+
+
+class TestPickNumbering:
+    def test_absolute_parameter_admits_fansub_names(
+        self, client: TestClient, mocker: MockerFixture
+    ) -> None:
+        _patch_pipeline(mocker, [FANSUB])
+        params = {"query": "jujutsu kaisen", "season": 3, "episode": 1, "resolution": "1080p"}
+        assert client.get(PICK_URL, params=params).status_code == 404
+        body = client.get(PICK_URL, params={**params, "absolute": 48}).json()
+        assert body["fileName"] == FANSUB["fileName"]
+
+    def test_prefer_multi_audio_parameter(self, client: TestClient, mocker: MockerFixture) -> None:
+        _patch_pipeline(mocker, [EXACT_1080, DUAL])
+        body = client.get(PICK_URL, params={**EPISODE_PARAMS, "prefer_multi_audio": True}).json()
+        assert body["fileName"] == DUAL["fileName"]

@@ -136,7 +136,7 @@ class TestMovieBareTitlePass:
         }
         search = mocker.patch(
             "torrent_downloader.routers.search.search_torrents",
-            side_effect=lambda _c, q, _s: by_query[q],
+            side_effect=lambda _c, q, _s, *_: by_query[q],
         )
         body = client.get(SEARCH_URL, params={"query": "Storks 2016", "media_type": "movie"}).json()
         assert [c.args[1] for c in search.call_args_list] == ["Storks 2016", "Storks"]
@@ -174,7 +174,7 @@ class TestAltQuery:
         }
         search = mocker.patch(
             "torrent_downloader.routers.search.search_torrents",
-            side_effect=lambda _c, q, _s: by_query[q],
+            side_effect=lambda _c, q, _s, *_: by_query[q],
         )
         body = client.get(
             SEARCH_URL,

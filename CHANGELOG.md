@@ -7,6 +7,22 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- `GET /search/tmdb/show/{id}/episode-groups` and
+  `GET /search/tmdb/show/{id}/numbering`: a show's TMDB episode groups and
+  its map from TMDB numbering to release-season and absolute numbers, with
+  auto selection (MickMarch/medialab#162).
+- `GET /search/torrents/pick` takes `absolute`: an episode pick also searches
+  `Title NN` and accepts fansub names such as `Title - 48 (1080p)`, read by
+  a dedicated parser because PTN takes digits from the trailing CRC.
+- `GET /search/torrents/pick` takes `prefer_multi_audio`, ranking dual or
+  multi audio releases first inside a resolution bucket.
+
+### Changed
+
+- medialab-contracts pinned to v1.7.0.
+
 ## [1.26.0] - 2026-11-03
 
 ### Added
