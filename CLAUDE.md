@@ -79,6 +79,8 @@ src/torrent_downloader/
 │                settings (declared runtime tunables, JSON override store, applied onto config)
 ├── services/    qbittorrent (client, search, filter/sort/group, transfers, VPN check),
 │                language (audio language parse + AUDIO_LANGUAGE_FILTER policy),
+│                numbering (pure: TMDB episode group -> ShowNumbering, auto selection,
+│                fansub absolute-number parse),
 │                tmdb, source (source-URL classification + magnet scraping), storage,
 │                credential_probe (slow probe loop started by the lifespan)
 ├── schemas/     request/response models; errors re-exports contracts ErrorResponse

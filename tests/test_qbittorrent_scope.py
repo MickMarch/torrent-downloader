@@ -173,3 +173,23 @@ class TestMovieYearFallback:
         assert [r["fileName"] for r in filter_by_year(results, 2016)] == [
             "Storks.2016.1080p.BluRay-GRP"
         ]
+
+
+class TestAbsolutePatterns:
+    def test_episode_scope_adds_the_absolute_form(self) -> None:
+        scope = TorrentSearchScope(media_type=MediaType.SHOW, season=3, episode=1)
+        assert build_search_patterns("Jujutsu Kaisen", scope, absolute=48) == [
+            "Jujutsu Kaisen S03E01",
+            "Jujutsu Kaisen 48",
+            "Jujutsu Kaisen S03",
+        ]
+
+    def test_absolute_pads_to_two_digits(self) -> None:
+        scope = TorrentSearchScope(media_type=MediaType.SHOW, season=1, episode=5)
+        assert "Show 05" in build_search_patterns("Show", scope, absolute=5)
+
+    def test_season_scope_ignores_absolute(self) -> None:
+        scope = TorrentSearchScope(media_type=MediaType.SHOW, season=3)
+        assert build_search_patterns("Show", scope, absolute=48) == build_search_patterns(
+            "Show", scope
+        )

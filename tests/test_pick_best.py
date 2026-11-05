@@ -18,6 +18,7 @@ from torrent_downloader.services.qbittorrent import (
 SEASON = 2
 EPISODE = 5
 NO_FLOOR = 0
+HIGH_FLOOR = 100
 
 
 def _result(name: str, seeders: int = 50, size: int = 1_000_000_000) -> TorrentResult:
@@ -304,3 +305,93 @@ class TestNoFallback:
         exact = _result("Show.S02E05.1080p.WEB")
         grouped = {RES_GROUP_1080: [exact], RES_GROUP_720: [_result("Show.S02E05.720p.WEB", 900)]}
         assert _pick(grouped, fallback=False) == exact
+
+
+class TestAbsoluteEpisode:
+    def test_fansub_absolute_name_matches(self) -> None:
+        fansub = _result("[SubsPlease] Jujutsu Kaisen - 48 (1080p) [8BC8D419].mkv", seeders=300)
+        picked = pick_best(
+            {RES_GROUP_1080: [fansub]},
+            season=3,
+            episode=1,
+            absolute=48,
+            resolution=RES_GROUP_1080,
+            min_seeders=NO_FLOOR,
+        )
+        assert picked == fansub
+
+    def test_release_season_name_still_matches(self) -> None:
+        scene = _result("[ToonsHub] Jujutsu Kaisen S03E01 1080p NF WEB-DL", seeders=900)
+        fansub = _result("[SubsPlease] Jujutsu Kaisen - 48 (1080p) [8BC8D419].mkv", seeders=300)
+        picked = pick_best(
+            {RES_GROUP_1080: [fansub, scene]},
+            season=3,
+            episode=1,
+            absolute=48,
+            resolution=RES_GROUP_1080,
+            min_seeders=NO_FLOOR,
+        )
+        assert picked == scene
+
+    def test_absolute_ignored_without_the_parameter(self) -> None:
+        fansub = _result("[SubsPlease] Jujutsu Kaisen - 48 (1080p) [8BC8D419].mkv")
+        assert (
+            pick_best(
+                {RES_GROUP_1080: [fansub]},
+                season=3,
+                episode=1,
+                resolution=RES_GROUP_1080,
+                min_seeders=NO_FLOOR,
+            )
+            is None
+        )
+
+    def test_other_absolute_number_does_not_match(self) -> None:
+        fansub = _result("[SubsPlease] Jujutsu Kaisen - 49 (1080p) [5B3F837D].mkv")
+        assert (
+            pick_best(
+                {RES_GROUP_1080: [fansub]},
+                season=3,
+                episode=1,
+                absolute=48,
+                resolution=RES_GROUP_1080,
+                min_seeders=NO_FLOOR,
+            )
+            is None
+        )
+
+
+class TestPreferMultiAudio:
+    def _grouped(self) -> tuple[TorrentResult, TorrentResult, dict[str, list[TorrentResult]]]:
+        single = _result(f"Show.S{SEASON:02d}E{EPISODE:02d}.1080p.WEB", seeders=500)
+        dual = _result(f"Show.S{SEASON:02d}E{EPISODE:02d}.1080p.Dual.Audio", seeders=40)
+        dual = dual.model_copy(update={"multiAudio": True})
+        return single, dual, {RES_GROUP_1080: [single, dual]}
+
+    def test_preference_ranks_multi_audio_first(self) -> None:
+        _, dual, grouped = self._grouped()
+        picked = pick_best(
+            grouped,
+            season=SEASON,
+            episode=EPISODE,
+            resolution=RES_GROUP_1080,
+            min_seeders=NO_FLOOR,
+            prefer_multi_audio=True,
+        )
+        assert picked == dual
+
+    def test_without_preference_seeders_win(self) -> None:
+        single, _, grouped = self._grouped()
+        assert _pick(grouped) == single
+
+    def test_preference_never_bypasses_the_seeder_floor(self) -> None:
+        single, _, grouped = self._grouped()
+        picked = pick_best(
+            grouped,
+            season=SEASON,
+            episode=EPISODE,
+            resolution=RES_GROUP_1080,
+            min_seeders=HIGH_FLOOR,
+            prefer_multi_audio=True,
+        )
+        assert picked == single

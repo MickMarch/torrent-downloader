@@ -6,8 +6,10 @@ import qbittorrentapi
 from fastapi import APIRouter, Query, Request
 from fastapi import status as fastapi_status
 from medialab_contracts import (
+    EpisodeGroupsResponse,
     MediaType,
     SeriesEpisodesResponse,
+    ShowNumbering,
     TorrentSearchProgress,
     TorrentSearchScope,
     VideosResponse,
@@ -47,12 +49,15 @@ from torrent_downloader.services.qbittorrent import (
     union_by_url,
 )
 from torrent_downloader.services.tmdb import (
+    NUMBERING_AUTO,
     TmdbUnavailableError,
     extract_media_type,
     extract_title,
     extract_year,
+    get_episode_groups,
     get_movie_details,
     get_series_episodes,
+    get_show_numbering,
     get_tv_details,
     get_videos,
     search_tmdb_multi,
@@ -215,13 +220,17 @@ def api_pick_torrent(
     timeout_seconds: int | None = Query(
         default=None, ge=_SEARCH_TIMEOUT_SPEC.min, le=_SEARCH_TIMEOUT_SPEC.max
     ),
+    absolute: int | None = Query(default=None, ge=1),
+    prefer_multi_audio: bool = False,
 ) -> TorrentResult:
     """The same search as ``/torrents`` for one episode, one season's pack
     when ``episode`` is unset, or a movie when ``media_type`` is ``movie``,
     reduced to a single release by ``pick_best``. A show needs ``season``.
     ``resolution`` is one of the pick buckets; ``min_seeders`` defaults to
     the configured minimum; ``timeout_seconds`` makes this one search wait
-    longer than the configured timeout and skip the cache.
+    longer than the configured timeout and skip the cache. For an episode,
+    ``absolute`` also searches and accepts the fansub absolute form;
+    ``prefer_multi_audio`` ranks dual or multi audio releases first.
     """
     if resolution not in PICK_RESOLUTION_ORDER:
         raise AppException(
@@ -248,7 +257,9 @@ def api_pick_torrent(
 
     token = search_timeout_override.set(timeout_seconds)
     try:
-        grouped: dict[str, list[TorrentResult]] = _search_grouped(query, alt_query, scope)
+        grouped: dict[str, list[TorrentResult]] = _search_grouped(
+            query, alt_query, scope, absolute if episode is not None else None
+        )
     finally:
         search_timeout_override.reset(token)
     picked: TorrentResult | None = pick_best(
@@ -258,6 +269,8 @@ def api_pick_torrent(
         resolution=resolution,
         min_seeders=config.minimum_seeders if min_seeders is None else min_seeders,
         fallback=config.pick_resolution_fallback is PickFallback.LOWER,
+        absolute=absolute,
+        prefer_multi_audio=prefer_multi_audio,
     )
     if picked is None:
         raise AppException(
@@ -269,7 +282,10 @@ def api_pick_torrent(
 
 
 def _search_grouped(
-    query: str, alt_query: str | None, scope: TorrentSearchScope
+    query: str,
+    alt_query: str | None,
+    scope: TorrentSearchScope,
+    absolute: int | None = None,
 ) -> dict[str, list[TorrentResult]]:
     """The full torrent search for a scope, grouped by resolution: the primary
     query, the alternate spelling when it differs, and for movies the bare-title
@@ -283,10 +299,10 @@ def _search_grouped(
         )
 
     queries: list[str] = search_queries(query, alt_query)
-    _prefetch_patterns(client, queries, scope)
+    _prefetch_patterns(client, queries, scope, absolute)
     batches: list[list[dict[str, Any]]] = []
     for q in queries:
-        batches.append(_search_pipeline(client, q, scope))
+        batches.append(_search_pipeline(client, q, scope, absolute))
         if scope.media_type is MediaType.MOVIE:
             batches.append(_movie_bare_title_pass(client, q, scope))
     scoped_results: list[dict[str, Any]] = union_by_url(batches)
@@ -297,18 +313,24 @@ def _search_grouped(
 
 
 def _prefetch_patterns(
-    client: qbittorrentapi.Client, queries: list[str], scope: TorrentSearchScope
+    client: qbittorrentapi.Client,
+    queries: list[str],
+    scope: TorrentSearchScope,
+    absolute: int | None = None,
 ) -> None:
     """Runs every pattern the pipeline will ask for in one concurrent batch, so
     the sequential passes below all hit the cache."""
-    patterns: list[str] = request_patterns(queries, scope)
+    patterns: list[str] = request_patterns(queries, scope, absolute)
     run_pattern_searches(client, patterns, SEARCH_CATEGORY_BY_MEDIA_TYPE[scope.media_type])
 
 
 def _search_pipeline(
-    client: qbittorrentapi.Client, query: str, scope: TorrentSearchScope
+    client: qbittorrentapi.Client,
+    query: str,
+    scope: TorrentSearchScope,
+    absolute: int | None = None,
 ) -> list[dict[str, Any]]:
-    raw_results: list[dict[str, Any]] = search_torrents(client, query, scope)
+    raw_results: list[dict[str, Any]] = search_torrents(client, query, scope, absolute)
     processed_results: list[dict[str, Any]] = filter_and_sort_results(raw_results)
     language_results: list[dict[str, Any]] = annotate_and_filter(
         processed_results,
@@ -382,6 +404,39 @@ def api_get_series_episodes(request: Request, series_id: int) -> SeriesEpisodesR
     """Seasons and episodes (specials excluded), the next episode to air and the show status."""
     try:
         return get_series_episodes(series_id)
+    except TmdbUnavailableError as error:
+        raise _tmdb_unavailable(error) from error
+
+
+@router.get(
+    "/tmdb/show/{series_id}/episode-groups",
+    response_model=EpisodeGroupsResponse,
+    status_code=fastapi_status.HTTP_200_OK,
+    summary="TMDB episode groups of type TV for a series, and the one auto numbering uses.",
+    responses=_TMDB_ERROR_RESPONSES,
+)
+@limiter.limit(RATE_LIMIT_SEARCH)
+def api_get_episode_groups(request: Request, series_id: int) -> EpisodeGroupsResponse:
+    try:
+        return get_episode_groups(series_id)
+    except TmdbUnavailableError as error:
+        raise _tmdb_unavailable(error) from error
+
+
+@router.get(
+    "/tmdb/show/{series_id}/numbering",
+    response_model=ShowNumbering,
+    status_code=fastapi_status.HTTP_200_OK,
+    summary="A series' map from TMDB numbering to release-season and absolute numbers.",
+    responses=_TMDB_ERROR_RESPONSES,
+)
+@limiter.limit(RATE_LIMIT_SEARCH)
+def api_get_show_numbering(
+    request: Request, series_id: int, group: str = NUMBERING_AUTO
+) -> ShowNumbering:
+    """``group`` is ``auto``, ``tmdb`` or an episode group id."""
+    try:
+        return get_show_numbering(series_id, group)
     except TmdbUnavailableError as error:
         raise _tmdb_unavailable(error) from error
 
