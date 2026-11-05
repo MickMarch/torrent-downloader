@@ -15,6 +15,7 @@ from torrent_downloader.services import tmdb
 from torrent_downloader.services.tmdb import (
     NUMBERING_AUTO,
     NUMBERING_TMDB,
+    UnknownEpisodeGroupError,
     get_episode_groups,
     get_show_numbering,
 )
@@ -104,6 +105,21 @@ class TestShowNumbering:
     def test_a_group_that_does_not_qualify_is_identity(self) -> None:
         assert get_show_numbering(SERIES_ID, SINGLE_ID).group_id is None
 
+    def test_an_unlisted_group_is_refused_before_any_tmdb_group_read(self, tmdb_reads: Any) -> None:
+        with pytest.raises(UnknownEpisodeGroupError):
+            get_show_numbering(SERIES_ID, "../../movie/1")
+        paths = [c.args[0] for c in tmdb_reads.call_args_list]
+        assert not any("episode_group/" in p for p in paths)
+
+    def test_a_failing_group_is_skipped_by_auto(self, tmdb_reads: Any) -> None:
+        def flaky(path: str, params: dict[str, Any]) -> dict[str, Any]:
+            if path.endswith(SINGLE_ID):
+                raise tmdb.TmdbUnavailableError("boom")
+            return _fake_get(path, params)
+
+        tmdb_reads.side_effect = flaky
+        assert get_show_numbering(SERIES_ID, NUMBERING_AUTO).group_id == SPLIT_ID
+
     def test_cached(self, tmdb_reads: Any) -> None:
         get_show_numbering(SERIES_ID, NUMBERING_AUTO)
         calls = tmdb_reads.call_count
@@ -118,6 +134,13 @@ class TestRoutes:
         )
         assert response.status_code == 200
         assert response.json()["group_id"] == SPLIT_ID
+
+    def test_unknown_group_is_422(self, client: TestClient) -> None:
+        response = client.get(
+            f"/api/v1/search/tmdb/show/{SERIES_ID}/numbering", params={"group": "nope"}
+        )
+        assert response.status_code == 422
+        assert response.json()["code"] == "INVALID_INPUT"
 
     def test_episode_groups_route(self, client: TestClient) -> None:
         response = client.get(f"/api/v1/search/tmdb/show/{SERIES_ID}/episode-groups")

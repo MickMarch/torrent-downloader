@@ -4,7 +4,7 @@ group of type TV. Pure; the TMDB reads live in ``services/tmdb.py``. Spec:
 ``docs/specs/anime-numbering.md`` in the workspace."""
 
 import re
-from collections.abc import Sequence
+from collections.abc import Iterable, Sequence
 from dataclasses import dataclass
 from datetime import date
 from typing import Any
@@ -23,9 +23,12 @@ FIELD_EPISODES = "episodes"
 FIELD_SEASON_NUMBER = "season_number"
 FIELD_EPISODE_NUMBER = "episode_number"
 
+MAX_ABSOLUTE_DIGITS = 4
 # Fansub absolute form: "Title - 58 (1080p)", "Title - 1100v2 [1080p]". PTN
 # misreads these (it takes digits out of the trailing CRC), so they are read here.
-_ABSOLUTE_EPISODE = re.compile(r"\s-\s(?P<absolute>\d{1,4})(?:v\d+)?(?=[\s\[(.]|$)")
+_ABSOLUTE_EPISODE = re.compile(
+    rf"\s-\s(?P<absolute>\d{{1,{MAX_ABSOLUTE_DIGITS}}})(?:v\d+)?(?=[\s\[(.]|$)"
+)
 
 CanonicalKey = tuple[int, int]
 
@@ -131,12 +134,13 @@ def build_numbering(
 def select_auto(
     tmdb_id: int,
     canonical: Sequence[Episode],
-    candidates: Sequence[tuple[str, str, Sequence[GroupSeason]]],
+    candidates: Iterable[tuple[str, str, Sequence[GroupSeason]]],
     *,
     today: date,
 ) -> ShowNumbering:
     """The first candidate ``(group_id, name, groups)`` that qualifies and
-    differs from TMDB numbering, else the identity map."""
+    differs from TMDB numbering, else the identity map. ``candidates`` may be
+    lazy: iteration stops at the first match."""
     for group_id, name, groups in candidates:
         numbering = build_numbering(
             tmdb_id, canonical, groups, today=today, group_id=group_id, group_name=name

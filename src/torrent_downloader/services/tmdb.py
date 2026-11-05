@@ -1,6 +1,6 @@
 """TMDB API client functions: multi-search, details, discover lists, episodes, videos."""
 
-from collections.abc import Callable
+from collections.abc import Callable, Iterator
 from datetime import UTC, datetime
 from typing import Any
 
@@ -25,6 +25,7 @@ from medialab_contracts import (
 from torrent_downloader.core.cache import app_cache
 from torrent_downloader.core.config import config
 from torrent_downloader.core.credentials import credentials
+from torrent_downloader.core.logger import app_logger
 from torrent_downloader.services.numbering import (
     GroupSeason,
     build_numbering,
@@ -503,6 +504,10 @@ FIELD_GROUP_TYPE: str = "type"
 FIELD_GROUP_COUNT: str = "group_count"
 
 
+class UnknownEpisodeGroupError(Exception):
+    """A group id that is not one of the show's TV-type episode groups."""
+
+
 def _cached(key: tuple[Any, ...], fetch: Callable[[], Any]) -> Any:
     cached = app_cache.get(key)
     if cached is not None:
@@ -526,7 +531,7 @@ def _tv_groups(series_id: int) -> list[EpisodeGroupInfo]:
             if g.get(FIELD_GROUP_TYPE) == TMDB_GROUP_TYPE_TV
         ]
 
-    key = (CACHE_NAMESPACE_NUMBERING, ENDPOINT_EPISODE_GROUPS, series_id)
+    key = (CACHE_NAMESPACE_NUMBERING, ENDPOINT_EPISODE_GROUPS, series_id, config.target_language)
     return [EpisodeGroupInfo.model_validate(g) for g in _cached(key, fetch)]
 
 
@@ -534,26 +539,46 @@ def _group_seasons(group_id: str) -> list[GroupSeason]:
     def fetch() -> dict[str, Any]:
         return _tmdb_get(f"{ENDPOINT_TV}/{ENDPOINT_EPISODE_GROUP}/{group_id}", {})
 
-    key = (CACHE_NAMESPACE_NUMBERING, ENDPOINT_EPISODE_GROUP, group_id)
+    key = (CACHE_NAMESPACE_NUMBERING, ENDPOINT_EPISODE_GROUP, group_id, config.target_language)
     return parse_group_seasons(_cached(key, fetch))
 
 
 def get_show_numbering(series_id: int, group: str = NUMBERING_AUTO) -> ShowNumbering:
     """The show's numbering: ``auto`` (the first TV group that qualifies),
-    ``tmdb`` (identity), or a group id. A named group that does not qualify
-    falls back to identity."""
+    ``tmdb`` (identity), or one of the show's TV group ids (anything else
+    raises ``UnknownEpisodeGroupError``, so no caller-supplied id reaches a
+    TMDB path unchecked). A named group that does not qualify falls back to
+    identity."""
     canonical = get_series_episodes(series_id).episodes
     today = datetime.now(UTC).date()
     if group == NUMBERING_TMDB:
         return identity_numbering(series_id, canonical)
     if group == NUMBERING_AUTO:
-        candidates = [(g.id, g.name, _group_seasons(g.id)) for g in _tv_groups(series_id)]
-        return select_auto(series_id, canonical, candidates, today=today)
-    name = next((g.name for g in _tv_groups(series_id) if g.id == group), "")
+        return select_auto(series_id, canonical, _auto_candidates(series_id), today=today)
+    listed = next((g for g in _tv_groups(series_id) if g.id == group), None)
+    if listed is None:
+        raise UnknownEpisodeGroupError(f"{group!r} is not a TV episode group of show {series_id}.")
     numbering = build_numbering(
-        series_id, canonical, _group_seasons(group), today=today, group_id=group, group_name=name
+        series_id,
+        canonical,
+        _group_seasons(listed.id),
+        today=today,
+        group_id=listed.id,
+        group_name=listed.name,
     )
     return numbering if numbering is not None else identity_numbering(series_id, canonical)
+
+
+def _auto_candidates(series_id: int) -> Iterator[tuple[str, str, list[GroupSeason]]]:
+    """Each TV group with its seasons, fetched lazily; a group TMDB fails to
+    return is skipped so it cannot hide a later one that qualifies."""
+    for group in _tv_groups(series_id):
+        try:
+            seasons = _group_seasons(group.id)
+        except TmdbUnavailableError as error:
+            app_logger.warning("Episode group %s skipped: %s", group.id, error)
+            continue
+        yield group.id, group.name, seasons
 
 
 def get_episode_groups(series_id: int) -> EpisodeGroupsResponse:

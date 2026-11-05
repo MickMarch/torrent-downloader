@@ -51,6 +51,7 @@ from torrent_downloader.services.qbittorrent import (
 from torrent_downloader.services.tmdb import (
     NUMBERING_AUTO,
     TmdbUnavailableError,
+    UnknownEpisodeGroupError,
     extract_media_type,
     extract_title,
     extract_year,
@@ -434,9 +435,15 @@ def api_get_episode_groups(request: Request, series_id: int) -> EpisodeGroupsRes
 def api_get_show_numbering(
     request: Request, series_id: int, group: str = NUMBERING_AUTO
 ) -> ShowNumbering:
-    """``group`` is ``auto``, ``tmdb`` or an episode group id."""
+    """``group`` is ``auto``, ``tmdb`` or one of the show's TV episode group ids."""
     try:
         return get_show_numbering(series_id, group)
+    except UnknownEpisodeGroupError as error:
+        raise AppException(
+            status_code=fastapi_status.HTTP_422_UNPROCESSABLE_CONTENT,
+            code=ErrorCode.INVALID_INPUT,
+            detail=str(error),
+        ) from error
     except TmdbUnavailableError as error:
         raise _tmdb_unavailable(error) from error
 
