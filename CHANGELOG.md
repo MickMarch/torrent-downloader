@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+
+- Season and episode scope checks read an episode code with a release
+  version (`S03E01v2`) instead of treating it as a seasonless release
+  (MickMarch/medialab#167).
+
 ## [1.27.0] - 2026-11-05
 
 ### Added
