@@ -24,7 +24,10 @@ from torrent_downloader.core.credentials import credentials
 from torrent_downloader.core.logger import app_logger
 from torrent_downloader.schemas.torrents import TorrentResult
 from torrent_downloader.schemas.transfers import TransferInfo
-from torrent_downloader.services.numbering import parse_absolute_episode
+from torrent_downloader.services.numbering import (
+    parse_absolute_episode,
+    strip_release_version,
+)
 from torrent_downloader.services.search_progress import search_progress
 
 search_timeout_override: ContextVar[int | None] = ContextVar(
@@ -321,7 +324,7 @@ def filter_by_scope(
     fallback: list[dict[str, Any]] = []
 
     for result in results:
-        parsed: dict[str, Any] = PTN.parse(result.get("fileName", ""))
+        parsed: dict[str, Any] = _parse_episode_name(result.get("fileName", ""))
         seasons: list[int] = _parsed_seasons(parsed.get("season"))
         episode: Any = parsed.get("episode")
 
@@ -556,11 +559,17 @@ def group_by_resolution(
     return {k: v for k, v in grouped.items() if v}
 
 
+def _parse_episode_name(name: str) -> dict[str, Any]:
+    """PTN over ``name`` with any release version after the episode code removed."""
+    parsed: dict[str, Any] = PTN.parse(strip_release_version(name))
+    return parsed
+
+
 def is_exact_season_pack(name: str, season: int) -> bool:
     """Whether a release name targets exactly one whole season: a single parsed
     season equal to ``season`` and no episode. Single episodes, multi-episode
     releases, multi-season ranges and complete series packs all fail."""
-    parsed: dict[str, Any] = PTN.parse(name)
+    parsed: dict[str, Any] = _parse_episode_name(name)
     return _parsed_seasons(parsed.get("season")) == [season] and parsed.get("episode") is None
 
 
@@ -569,13 +578,13 @@ def is_exact_episode(name: str, season: int, episode: int) -> bool:
     season equal to ``season`` and a single parsed episode equal to ``episode``.
     Season packs, multi-season ranges, multi-episode releases and complete
     series packs all fail this test."""
-    parsed: dict[str, Any] = PTN.parse(name)
+    parsed: dict[str, Any] = _parse_episode_name(name)
     return _parsed_seasons(parsed.get("season")) == [season] and parsed.get("episode") == episode
 
 
 def is_absolute_episode(name: str, absolute: int) -> bool:
     """Whether a fansub-style name (no parsed season) carries ``absolute``."""
-    if _parsed_seasons(PTN.parse(name).get("season")):
+    if _parsed_seasons(_parse_episode_name(name).get("season")):
         return False
     return parse_absolute_episode(name) == absolute
 

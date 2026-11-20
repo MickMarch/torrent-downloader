@@ -9,6 +9,8 @@ from torrent_downloader.services.qbittorrent import (
     build_search_patterns,
     filter_by_scope,
     filter_by_year,
+    is_exact_episode,
+    is_exact_season_pack,
     split_trailing_year,
 )
 
@@ -193,3 +195,19 @@ class TestAbsolutePatterns:
         assert build_search_patterns("Show", scope, absolute=48) == build_search_patterns(
             "Show", scope
         )
+
+
+class TestReleaseVersionSuffix:
+    VERSIONED = "[Judas] JUJUTSU KAISEN - S03E01v2 [1080p][Dual-Audio]"
+
+    def test_exact_episode_reads_through_the_version(self) -> None:
+        assert is_exact_episode(self.VERSIONED, 3, 1)
+
+    def test_a_versioned_episode_is_not_a_season_pack(self) -> None:
+        assert not is_exact_season_pack(self.VERSIONED, 3)
+
+    def test_episode_scope_keeps_the_versioned_release_as_primary(self) -> None:
+        scope = TorrentSearchScope(media_type=MediaType.SHOW, season=3, episode=1)
+        complete = make_result("Jujutsu Kaisen Complete Series 1080p")
+        versioned = make_result(self.VERSIONED)
+        assert filter_by_scope([complete, versioned], scope) == [versioned, complete]

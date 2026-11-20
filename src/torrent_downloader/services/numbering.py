@@ -29,6 +29,9 @@ MAX_ABSOLUTE_DIGITS = 4
 _ABSOLUTE_EPISODE = re.compile(
     rf"\s-\s(?P<absolute>\d{{1,{MAX_ABSOLUTE_DIGITS}}})(?:v\d+)?(?=[\s\[(.]|$)"
 )
+# A release version after an episode code ("S03E01v2") hides the season from
+# PTN; the version says nothing about which episode it is, so it is dropped.
+_RELEASE_VERSION = re.compile(r"(?i)\b(S\d+E\d+)v\d+\b")
 
 CanonicalKey = tuple[int, int]
 
@@ -45,6 +48,11 @@ def parse_absolute_episode(name: str) -> int | None:
     """The absolute episode number of a fansub-style name, or None."""
     match = _ABSOLUTE_EPISODE.search(name)
     return int(match.group("absolute")) if match else None
+
+
+def strip_release_version(name: str) -> str:
+    """``name`` with any ``vN`` directly after an ``SxxEyy`` code removed."""
+    return _RELEASE_VERSION.sub(r"\1", name)
 
 
 def parse_group_seasons(raw: dict[str, Any]) -> list[GroupSeason]:
